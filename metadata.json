@@ -1,0 +1,6 @@
+{
+  "name": "NOVARO ERP",
+  "description": "A high-fidelity modular ERP system for coffee and spice roasting, production, warehousing, wholesale, and retail, featuring a double-entry bookkeeping engine, batches, recipes, and Arabic RTL support.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
