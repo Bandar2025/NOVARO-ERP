@@ -6,6 +6,9 @@ import {
   Trash2, Calendar, MapPin, Eye, X, ArrowLeftRight, Check, AlertTriangle, Play 
 } from "lucide-react";
 import ERPTable, { ColumnDef } from "./common/ERPTable";
+import PageHeader from "./common/PageHeader";
+import StatusBadge from "./common/StatusBadge";
+import ConfirmDialog from "./common/ConfirmDialog";
 
 interface InventoryModuleProps {
   language?: "ar" | "en";
@@ -315,83 +318,103 @@ export default function InventoryModule({ language = "ar" }: InventoryModuleProp
   return (
     <div className="space-y-6 text-right">
       
-      {/* Header bar */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 pb-5">
-        <div>
-          <span className="text-xs uppercase font-bold text-slate-400 tracking-widest font-mono block">
-            {isAr ? "إدارة سلاسل التوريد والتحكم في المخازن" : "SUPPLY CHAIN LOGISTICS & WAREHOUSING SITES"}
-          </span>
-          <h1 className="text-2xl font-black text-slate-900 flex items-center gap-2 justify-end">
-            <Package className="w-6 h-6 text-teal-700" />
-            {isAr ? "إدارة المخازن وحركات المواد" : "Warehouse Materials Ledger"}
-          </h1>
-        </div>
+      {/* Standardized Page Header */}
+      <PageHeader
+        title="إدارة المخازن وسلاسل الإمداد وFIFO"
+        titleEn="Warehouse & FIFO Inventory Management"
+        description="كتالوج الأصناف، تتبع طبقات FIFO، التسويات الجردية، التحويلات بين المستودعات، وطباعة الباركود."
+        descriptionEn="SKU catalog, FIFO valuation layers, inventory adjustments, multi-warehouse transfers, and barcode printing."
+        icon={Package}
+        breadcrumbs={[
+          { label: "المخزون وسلاسل الإمداد", labelEn: "Inventory & Supply" },
+          { 
+            label: activeSubTab === "catalog" ? "كتالوج الأصناف" :
+                   activeSubTab === "lots" ? "وجبات FIFO التتبعية" :
+                   activeSubTab === "adjustments" ? "تسويات الجرد" :
+                   activeSubTab === "transfers" ? "تحويلات المستودعات" : "استوديو الباركود",
+            labelEn: activeSubTab === "catalog" ? "SKU Catalog" :
+                     activeSubTab === "lots" ? "FIFO Lots" :
+                     activeSubTab === "adjustments" ? "Adjustments" :
+                     activeSubTab === "transfers" ? "Transfers" : "Barcodes",
+            active: true 
+          }
+        ]}
+        language={language}
+        actions={
+          <div className="flex items-center gap-2">
+            {activeSubTab === "catalog" && (
+              <button
+                type="button"
+                onClick={() => setShowAddForm(!showAddForm)}
+                className="px-4 py-2 bg-slate-900 hover:bg-black text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-xs transition"
+              >
+                <Plus className="w-4 h-4" />
+                <span>{isAr ? (showAddForm ? "إغلاق النموذج" : "إضافة صنف مخزني") : (showAddForm ? "Close Form" : "Add SKU")}</span>
+              </button>
+            )}
 
-        {/* Action subtabs bar */}
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex gap-1 p-1 bg-slate-100 rounded-lg border border-slate-200 text-xs font-bold">
-            <button
-              onClick={() => setActiveSubTab("catalog")}
-              className={`px-3 py-1.5 rounded-md transition ${activeSubTab === "catalog" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
-            >
-              {isAr ? "كتالوج المواد" : "Material Index"}
-            </button>
-            <button
-              onClick={() => setActiveSubTab("lots")}
-              className={`px-3 py-1.5 rounded-md transition ${activeSubTab === "lots" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
-            >
-              {isAr ? "وجبات FIFO التتبعية" : "FIFO Lot Batches"}
-            </button>
-            <button
-              onClick={() => setActiveSubTab("adjustments")}
-              className={`px-3 py-1.5 rounded-md transition ${activeSubTab === "adjustments" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
-            >
-              {isAr ? "تسويات الجرد" : "Stock Adjustments"}
-            </button>
-            <button
-              onClick={() => setActiveSubTab("transfers")}
-              className={`px-3 py-1.5 rounded-md transition ${activeSubTab === "transfers" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
-            >
-              {isAr ? "تحويلات المستودعات" : "Warehouse Transfers"}
-            </button>
-            <button
-              onClick={() => setActiveSubTab("barcodes")}
-              className={`px-3 py-1.5 rounded-md transition ${activeSubTab === "barcodes" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
-            >
-              {isAr ? "باركود المنتجات" : "Barcode Studio"}
-            </button>
+            {activeSubTab === "adjustments" && (
+              <button
+                type="button"
+                onClick={() => setShowAdjForm(!showAdjForm)}
+                className="px-4 py-2 bg-teal-800 hover:bg-teal-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-xs transition"
+              >
+                <Plus className="w-4 h-4" />
+                <span>{isAr ? (showAdjForm ? "إغلاق النموذج" : "تسوية جردية جديدة") : (showAdjForm ? "Close Form" : "New Adjustment")}</span>
+              </button>
+            )}
+
+            {activeSubTab === "transfers" && (
+              <button
+                type="button"
+                onClick={() => setShowTransForm(!showTransForm)}
+                className="px-4 py-2 bg-slate-900 hover:bg-black text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-xs transition"
+              >
+                <Plus className="w-4 h-4" />
+                <span>{isAr ? (showTransForm ? "إغلاق النموذج" : "أمر تحويل مخزني") : (showTransForm ? "Close Form" : "New Transfer")}</span>
+              </button>
+            )}
           </div>
+        }
+      />
 
-          {activeSubTab === "catalog" && (
-            <button
-              onClick={() => setShowAddForm(!showAddForm)}
-              className="px-4 py-2 bg-slate-950 hover:bg-slate-800 text-white font-bold text-xs rounded-xl flex items-center gap-2 shadow-xs"
-            >
-              <Plus className="w-4 h-4" />
-              <span>{isAr ? "إضافة صنف مخزني" : "Add SKU"}</span>
-            </button>
-          )}
-
-          {activeSubTab === "adjustments" && (
-            <button
-              onClick={() => setShowAdjForm(!showAdjForm)}
-              className="px-4 py-2 bg-teal-800 hover:bg-teal-700 text-white font-bold text-xs rounded-xl flex items-center gap-2 shadow-xs"
-            >
-              <Plus className="w-4 h-4" />
-              <span>{isAr ? "تسوية جردية جديدة" : "New Adjustment"}</span>
-            </button>
-          )}
-
-          {activeSubTab === "transfers" && (
-            <button
-              onClick={() => setShowTransForm(!showTransForm)}
-              className="px-4 py-2 bg-slate-950 hover:bg-slate-800 text-white font-bold text-xs rounded-xl flex items-center gap-2 shadow-xs"
-            >
-              <Plus className="w-4 h-4" />
-              <span>{isAr ? "أمر تحويل مخزني" : "New Transfer"}</span>
-            </button>
-          )}
-        </div>
+      {/* Standardized Secondary Navigation Tabs */}
+      <div className="flex items-center gap-1.5 p-1 bg-slate-100/90 rounded-xl border border-slate-200/80 overflow-x-auto text-xs font-bold">
+        <button
+          type="button"
+          onClick={() => setActiveSubTab("catalog")}
+          className={`px-3.5 py-2 rounded-lg transition-all ${activeSubTab === "catalog" ? "bg-white text-slate-900 shadow-xs border border-slate-200/60" : "text-slate-500 hover:text-slate-800"}`}
+        >
+          {isAr ? "كتالوج المواد" : "Material Index"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveSubTab("lots")}
+          className={`px-3.5 py-2 rounded-lg transition-all ${activeSubTab === "lots" ? "bg-white text-slate-900 shadow-xs border border-slate-200/60" : "text-slate-500 hover:text-slate-800"}`}
+        >
+          {isAr ? "وجبات FIFO التتبعية" : "FIFO Lot Batches"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveSubTab("adjustments")}
+          className={`px-3.5 py-2 rounded-lg transition-all ${activeSubTab === "adjustments" ? "bg-white text-slate-900 shadow-xs border border-slate-200/60" : "text-slate-500 hover:text-slate-800"}`}
+        >
+          {isAr ? "تسويات الجرد" : "Stock Adjustments"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveSubTab("transfers")}
+          className={`px-3.5 py-2 rounded-lg transition-all ${activeSubTab === "transfers" ? "bg-white text-slate-900 shadow-xs border border-slate-200/60" : "text-slate-500 hover:text-slate-800"}`}
+        >
+          {isAr ? "تحويلات المستودعات" : "Warehouse Transfers"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveSubTab("barcodes")}
+          className={`px-3.5 py-2 rounded-lg transition-all ${activeSubTab === "barcodes" ? "bg-white text-slate-900 shadow-xs border border-slate-200/60" : "text-slate-500 hover:text-slate-800"}`}
+        >
+          {isAr ? "باركود المنتجات" : "Barcode Studio"}
+        </button>
       </div>
 
       {/* 1. CATALOG FORM VIEW */}

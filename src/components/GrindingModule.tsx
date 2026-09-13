@@ -2,6 +2,8 @@ import React, { useState } from "react";
 import { useAppState } from "../context/StateContext";
 import { Layers2, Plus, Trash2, CheckCircle, Sliders, DollarSign, Calendar } from "lucide-react";
 import ERPTable, { ColumnDef } from "./common/ERPTable";
+import PageHeader from "./common/PageHeader";
+import ConfirmDialog from "./common/ConfirmDialog";
 
 interface GrindingModuleProps {
   language?: "ar" | "en";
@@ -14,6 +16,7 @@ export default function GrindingModule({ language = "ar" }: GrindingModuleProps)
   } = useAppState();
 
   const [activeTab, setActiveTab] = useState<"production" | "expenses" | "costing">("production");
+  const [deleteExpenseId, setDeleteExpenseId] = useState<string | null>(null);
 
   // Grinding Job Form State
   const [recipeId, setRecipeId] = useState("");
@@ -147,8 +150,10 @@ export default function GrindingModule({ language = "ar" }: GrindingModuleProps)
       headerEn: "Actions",
       render: (_, row) => (
         <button
-          onClick={() => deleteGrindingExpense(row.id)}
-          className="p-1 text-slate-400 hover:text-rose-600"
+          type="button"
+          onClick={() => setDeleteExpenseId(row.id)}
+          className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition"
+          title={isAr ? "حذف المصروف" : "Delete Expense"}
         >
           <Trash2 className="w-4 h-4" />
         </button>
@@ -158,41 +163,53 @@ export default function GrindingModule({ language = "ar" }: GrindingModuleProps)
 
   return (
     <div className="space-y-6">
-      {/* Title */}
-      <div className="border-b border-slate-200 pb-5">
-        <span className="text-xs uppercase font-bold text-amber-600 tracking-wider font-mono">
-          {isAr ? "قسم طحن البن والتوابل الصناعي" : "GRINDING WORKSTATION & MILL CONTROL"}
-        </span>
-        <h1 className="text-3xl font-black text-slate-900 flex items-center gap-3">
-          <Layers2 className="w-8 h-8 text-indigo-600" />
-          {isAr ? "قسم الطاحونة" : "Grinding Department"}
-        </h1>
-      </div>
+      {/* Standardized Page Header */}
+      <PageHeader
+        title="قسم طحن البن والتوابل الصناعي"
+        titleEn="Industrial Grinding Operations & Mill Costing"
+        description="تسجيل أوامر الطحن، مراقبة درجات النعومة، إدارة مصروفات الطاقة الكهربائية وصيانة الشفرات."
+        descriptionEn="Record grinding batch jobs, calibrate particle fineness, and compute added unit power/maintenance cost."
+        icon={Layers2}
+        breadcrumbs={[
+          { label: "الإنتاج والتصنيع", labelEn: "Manufacturing" },
+          { 
+            label: activeTab === "production" ? "عمليات تشغيل المطاحن" :
+                   activeTab === "expenses" ? "مصروفات الطاحونة" : "حساب التكاليف والإنتاج",
+            labelEn: activeTab === "production" ? "Grinding Runs" :
+                     activeTab === "expenses" ? "Grinding Expenses" : "Cost Sheet",
+            active: true 
+          }
+        ]}
+        language={language}
+      />
 
-      {/* Touch-friendly Navigation */}
-      <div className="grid grid-cols-3 gap-3 bg-slate-100 p-2 rounded-2xl">
+      {/* Standardized Secondary Navigation Tabs */}
+      <div className="flex items-center gap-1.5 p-1 bg-slate-100/90 rounded-xl border border-slate-200/80 overflow-x-auto text-xs font-bold">
         <button
+          type="button"
           onClick={() => setActiveTab("production")}
-          className={`py-3.5 rounded-xl font-bold text-sm transition ${
-            activeTab === "production" ? "bg-indigo-600 text-white shadow-xs" : "bg-white text-slate-600 hover:bg-slate-50"
+          className={`px-3.5 py-2 rounded-lg transition-all ${
+            activeTab === "production" ? "bg-white text-slate-900 shadow-xs border border-slate-200/60" : "text-slate-500 hover:text-slate-800"
           }`}
         >
           {isAr ? "عمليات تشغيل المطاحن" : "Grinding Runs"}
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveTab("expenses")}
-          className={`py-3.5 rounded-xl font-bold text-sm transition ${
-            activeTab === "expenses" ? "bg-indigo-600 text-white shadow-xs" : "bg-white text-slate-600 hover:bg-slate-50"
+          className={`px-3.5 py-2 rounded-lg transition-all ${
+            activeTab === "expenses" ? "bg-white text-slate-900 shadow-xs border border-slate-200/60" : "text-slate-500 hover:text-slate-800"
           }`}
         >
           {isAr ? "مصروفات الطاحونة المستقلة" : "Grinding Expenses"}
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveTab("costing")}
-          className={`py-3.5 rounded-xl font-bold text-sm transition ${
-            activeTab === "costing" ? "bg-indigo-600 text-white shadow-xs" : "bg-white text-slate-600 hover:bg-slate-50"
+          className={`px-3.5 py-2 rounded-lg transition-all ${
+            activeTab === "costing" ? "bg-white text-slate-900 shadow-xs border border-slate-200/60" : "text-slate-500 hover:text-slate-800"
           }`}
         >
           {isAr ? "حساب التكاليف والإنتاج" : "Grinding Cost Sheet"}
@@ -411,6 +428,23 @@ export default function GrindingModule({ language = "ar" }: GrindingModuleProps)
           </div>
         </div>
       )}
+
+      {/* Delete Expense Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={!!deleteExpenseId}
+        title={isAr ? "حذف مصروف الطاحونة" : "Delete Grinding Expense"}
+        message={isAr ? "هل أنت متأكد من حذف هذا المصروف؟ سيتم إعادة احتساب تكلفة الكيلو المطحون آلياً." : "Are you sure you want to delete this expense? Grinding cost sheet will be updated automatically."}
+        confirmLabel={isAr ? "تأكيد الحذف" : "Confirm Delete"}
+        cancelLabel={isAr ? "إلغاء" : "Cancel"}
+        variant="danger"
+        onConfirm={() => {
+          if (deleteExpenseId) {
+            deleteGrindingExpense(deleteExpenseId);
+            setDeleteExpenseId(null);
+          }
+        }}
+        onCancel={() => setDeleteExpenseId(null)}
+      />
     </div>
   );
 }

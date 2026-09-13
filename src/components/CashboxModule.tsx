@@ -2,6 +2,9 @@ import React, { useState } from "react";
 import { useAppState } from "../context/StateContext";
 import { Landmark, ArrowUpRight, ArrowDownLeft, ShieldAlert, Plus, Trash2, CheckCircle, FileText, Sparkles, DollarSign } from "lucide-react";
 import ERPTable, { ColumnDef } from "./common/ERPTable";
+import PageHeader from "./common/PageHeader";
+import ConfirmDialog from "./common/ConfirmDialog";
+import StatusBadge from "./common/StatusBadge";
 
 interface CashboxModuleProps {
   language?: "ar" | "en";
@@ -14,6 +17,7 @@ export default function CashboxModule({ language = "ar" }: CashboxModuleProps) {
   } = useAppState();
 
   const [activeTab, setActiveTab] = useState<"terminal" | "vouchers">("terminal");
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   // Vouchers state
   const [txType, setTxType] = useState<"receipt" | "payment" | "expense">("receipt");
@@ -109,12 +113,10 @@ export default function CashboxModule({ language = "ar" }: CashboxModuleProps) {
       headerEn: "Actions",
       render: (_, row) => (
         <button
-          onClick={() => {
-            if (confirm(isAr ? "هل أنت متأكد من حذف هذه الحركة؟" : "Delete transaction?")) {
-              deleteCashboxTransaction(row.id);
-            }
-          }}
-          className="p-1 text-slate-400 hover:text-rose-600"
+          type="button"
+          onClick={() => setDeleteConfirmId(row.id)}
+          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+          title={isAr ? "حذف السند" : "Delete Voucher"}
         >
           <Trash2 className="w-4 h-4" />
         </button>
@@ -124,32 +126,41 @@ export default function CashboxModule({ language = "ar" }: CashboxModuleProps) {
 
   return (
     <div className="space-y-6">
-      {/* Title */}
-      <div className="border-b border-slate-200 pb-5">
-        <span className="text-xs uppercase font-bold text-amber-600 tracking-wider font-mono">
-          {isAr ? "الخزينة المباشرة وإدارة السيولة النقدية" : "DIRECT CASHBOX & SAFE LIQUIDITY CONTROL"}
-        </span>
-        <h1 className="text-3xl font-black text-slate-900 flex items-center gap-3">
-          <Landmark className="w-8 h-8 text-teal-700" />
-          {isAr ? "إدارة الصندوق والخزينة" : "Cashbox Department"}
-        </h1>
-      </div>
+      {/* Standardized Page Header */}
+      <PageHeader
+        title="إدارة الخزينة والسيولة النقدية"
+        titleEn="Cashbox & Treasury Operations"
+        description="متابعة حركة الصندوق اليومية، إصدار سندات القبض والصرف، وضبط السيولة النقدية."
+        descriptionEn="Monitor cashbox inflows and outflows, generate receipt/payment vouchers, and verify safe balances."
+        icon={Landmark}
+        breadcrumbs={[
+          { label: "المحاسبة والمالية", labelEn: "Accounting & Finance" },
+          { 
+            label: activeTab === "terminal" ? "دفتر حركة الصندوق" : "إصدار سند مالي",
+            labelEn: activeTab === "terminal" ? "Cash Ledger" : "Issue Voucher",
+            active: true 
+          }
+        ]}
+        language={language}
+      />
 
-      {/* Touch friendly navigation */}
-      <div className="grid grid-cols-2 gap-3 bg-slate-100 p-2 rounded-2xl">
+      {/* Standardized Secondary Navigation Tabs */}
+      <div className="flex items-center gap-1.5 p-1 bg-slate-100/90 rounded-xl border border-slate-200/80 overflow-x-auto text-xs font-bold">
         <button
+          type="button"
           onClick={() => setActiveTab("terminal")}
-          className={`py-3.5 rounded-xl font-bold text-sm transition ${
-            activeTab === "terminal" ? "bg-teal-700 text-white shadow-xs" : "bg-white text-slate-600 hover:bg-slate-50"
+          className={`px-4 py-2 rounded-lg transition-all ${
+            activeTab === "terminal" ? "bg-white text-slate-900 shadow-xs border border-slate-200/60" : "text-slate-500 hover:text-slate-800"
           }`}
         >
           {isAr ? "دفتر حركة الصندوق الفوري" : "Cash Ledger Log"}
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveTab("vouchers")}
-          className={`py-3.5 rounded-xl font-bold text-sm transition ${
-            activeTab === "vouchers" ? "bg-teal-700 text-white shadow-xs" : "bg-white text-slate-600 hover:bg-slate-50"
+          className={`px-4 py-2 rounded-lg transition-all ${
+            activeTab === "vouchers" ? "bg-white text-slate-900 shadow-xs border border-slate-200/60" : "text-slate-500 hover:text-slate-800"
           }`}
         >
           {isAr ? "إصدار سند قبض / صرف جديد" : "Issue Receipt/Payment Vouchers"}
@@ -292,6 +303,23 @@ export default function CashboxModule({ language = "ar" }: CashboxModuleProps) {
           </button>
         </form>
       )}
+
+      {/* Standard Delete Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={!!deleteConfirmId}
+        title={isAr ? "حذف حركة الصندوق" : "Delete Cashbox Transaction"}
+        message={isAr ? "هل أنت متأكد من حذف هذه الحركة من سجل الصندوق؟ لا يمكن التراجع عن هذا الإجراء." : "Are you sure you want to delete this cash transaction? This cannot be undone."}
+        confirmLabel={isAr ? "تأكيد الحذف" : "Confirm Delete"}
+        cancelLabel={isAr ? "إلغاء" : "Cancel"}
+        variant="danger"
+        onConfirm={() => {
+          if (deleteConfirmId) {
+            deleteCashboxTransaction(deleteConfirmId);
+            setDeleteConfirmId(null);
+          }
+        }}
+        onCancel={() => setDeleteConfirmId(null)}
+      />
     </div>
   );
 }

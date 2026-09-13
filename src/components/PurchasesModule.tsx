@@ -1,8 +1,14 @@
 import React, { useState } from "react";
 import { useAppState } from "../context/StateContext";
 import { PurchaseOrderItem } from "../types";
-import { Plus, Check, Trash2, Printer, Truck, Calendar, Sparkles } from "lucide-react";
+import { Plus, Check, Trash2, Printer, Truck, Calendar, Eye, X, PackageCheck } from "lucide-react";
 import ERPTable, { ColumnDef } from "./common/ERPTable";
+import PageHeader from "./common/PageHeader";
+import ConfirmDialog from "./common/ConfirmDialog";
+import FormSection from "./common/FormSection";
+import FormField from "./common/FormField";
+import EmptyState from "./common/EmptyState";
+import StatusBadge from "./common/StatusBadge";
 
 interface PurchasesModuleProps {
   language?: "ar" | "en";
@@ -20,8 +26,11 @@ export default function PurchasesModule({ language = "ar" }: PurchasesModuleProp
   ]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Selected PO for Actions
+  // Selected PO for preview
   const [selectedPO, setSelectedPO] = useState<any | null>(null);
+
+  // Confirm receive cargo state
+  const [poToReceive, setPoToReceive] = useState<any | null>(null);
 
   // Columns definition for ERPTable
   const columns: ColumnDef[] = [
@@ -32,7 +41,11 @@ export default function PurchasesModule({ language = "ar" }: PurchasesModuleProp
       key: "totalAmount", 
       header: "المجموع (ريال)", 
       headerEn: "Total (SAR)",
-      render: (val: any) => <span className="font-bold font-mono text-slate-800">SAR {Number(val).toLocaleString()}</span>
+      render: (val: any) => (
+        <span className="font-bold font-mono text-slate-800">
+          SAR {Number(val).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </span>
+      )
     },
     { 
       key: "status", 
@@ -40,17 +53,40 @@ export default function PurchasesModule({ language = "ar" }: PurchasesModuleProp
       headerEn: "Cargo Status",
       type: "select",
       options: [
-        { value: "Draft", label: isAr ? "تحت التوريد" : "In Transit / Draft" },
+        { value: "Draft", label: isAr ? "تحت التوريد" : "In Transit" },
         { value: "Received", label: isAr ? "مستلم ومخزن" : "Received" }
       ],
       render: (val: any) => (
-        <span className={`px-2 py-0.5 rounded-full text-xs font-bold border ${
-          val === "Received" 
-            ? "bg-emerald-50 text-emerald-700 border-emerald-200" 
-            : "bg-amber-50 text-amber-700 border-amber-200"
-        }`}>
-          {val === "Received" ? (isAr ? "مستلم ومفروز" : "Received") : (isAr ? "تحت التوريد" : "Draft / Transit")}
-        </span>
+        <StatusBadge status={val === "Received" ? "Received" : "InTransit"} language={language} size="sm" />
+      )
+    },
+    {
+      key: "actions",
+      header: "الإجراءات",
+      headerEn: "Actions",
+      sortable: false,
+      render: (_: any, row: any) => (
+        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+          <button
+            type="button"
+            onClick={() => setSelectedPO(row)}
+            title={isAr ? "معاينة أمر الشراء" : "Preview PO"}
+            className="p-1.5 rounded-lg text-slate-500 hover:text-teal-700 hover:bg-slate-100 transition-colors flex items-center gap-1 text-xs font-semibold"
+          >
+            <Eye className="w-3.5 h-3.5" />
+            <span>{isAr ? "معاينة" : "View"}</span>
+          </button>
+          {row.status === "Draft" && (
+            <button
+              type="button"
+              onClick={() => setPoToReceive(row)}
+              className="px-2.5 py-1 text-[11px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors flex items-center gap-1 shadow-2xs"
+            >
+              <PackageCheck className="w-3 h-3" />
+              <span>{isAr ? "استلام الشحنة" : "Receive"}</span>
+            </button>
+          )}
+        </div>
       )
     }
   ];
@@ -116,20 +152,21 @@ export default function PurchasesModule({ language = "ar" }: PurchasesModuleProp
 
     addToast({
       type: "success",
-      message: "تم إنشاء مسودة أمر الشراء بنجاح وجاري فحص الشحنة في الجمارك",
-      messageEn: "Draft purchase order created successfully and pending cargo receipt"
+      message: "تم إصدار أمر الشراء بنجاح وجاري فحص الشحنة في الجمارك والميناء",
+      messageEn: "Purchase order created successfully and pending cargo receipt"
     });
   };
 
-  const handleReceivePO = (poId: string) => {
-    const res = receivePurchaseOrder(poId);
+  const handleConfirmReceive = () => {
+    if (!poToReceive) return;
+    const res = receivePurchaseOrder(poToReceive.id);
     if (res.success) {
       addToast({
         type: "success",
-        message: "تم فحص الشحنة واستلام البضاعة وتوزيعها على مستودعات المواد الخام وتعديل الأرصدة تلقائياً",
-        messageEn: "Cargo received and allocated to stocks, ledger balances updated"
+        message: `تم فحص واستلام الشحنة #${poToReceive.id} وإيداع الكميات لمستودعات المواد الخام FIFO`,
+        messageEn: `Cargo #${poToReceive.id} received and allocated to raw inventory`
       });
-      // Clear selection
+      setPoToReceive(null);
       setSelectedPO(null);
     } else {
       addToast({
@@ -140,299 +177,334 @@ export default function PurchasesModule({ language = "ar" }: PurchasesModuleProp
     }
   };
 
-  // Printable Purchase Order PDF pre-render
-  const triggerPrintPO = (po: any) => {
-    const printWindow = window.open("", "_blank");
-    if (!printWindow) return;
-
-    const itemsHtml = po.items.map((item: any, idx: number) => `
-      <tr style="border-bottom: 1px solid #e2e8f0;">
-        <td style="padding: 10px; font-weight: bold;">${idx + 1}</td>
-        <td style="padding: 10px;">${item.itemName}</td>
-        <td style="padding: 10px; text-align: center; font-family: monospace;">${item.quantity} كجم</td>
-        <td style="padding: 10px; text-align: right; font-family: monospace;">SAR ${item.price.toFixed(2)}</td>
-        <td style="padding: 10px; text-align: right; font-family: monospace; font-weight: bold;">SAR ${(item.quantity * item.price).toFixed(2)}</td>
-      </tr>
-    `).join("");
-
-    printWindow.document.write(`
-      <html dir="${isAr ? "rtl" : "ltr"}">
-        <head>
-          <title>أمر شراء رسمي - ${po.id}</title>
-          <style>
-            body { font-family: 'IBM Plex Sans Arabic', sans-serif; padding: 40px; color: #1e293b; background: white; }
-            .header-table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
-            .title { font-size: 24px; font-weight: bold; color: #0f766e; }
-            .meta-box { background: #f8fafc; border: 1px solid #e2e8f0; padding: 15px; border-radius: 8px; font-size: 13px; margin-bottom: 25px; }
-            .items-table { width: 100%; border-collapse: collapse; margin-bottom: 30px; font-size: 13px; }
-            .items-table th { background: #1e293b; color: white; padding: 12px; text-align: ${isAr ? "right" : "left"}; }
-            .summary-table { float: ${isAr ? "left" : "right"}; width: 300px; border-collapse: collapse; margin-top: 20px; font-size: 13px; }
-            .summary-table td { padding: 8px; border-bottom: 1px solid #e2e8f0; }
-            .footer { margin-top: 150px; text-align: center; font-size: 11px; color: #64748b; border-top: 1px solid #e2e8f0; padding-top: 15px; }
-          </style>
-        </head>
-        <body onload="window.print()">
-          <table class="header-table">
-            <tr>
-              <td class="title">NOVARO ERP - نـوفـارو</td>
-              <td style="text-align: ${isAr ? "left" : "right"}; font-size: 13px; font-weight: bold;">
-                <div>أمر شراء وتوريد مواد أولية</div>
-                <div style="color: #64748b; font-size: 11px; margin-top: 3px;">Official Purchase Order</div>
-              </td>
-            </tr>
-          </table>
-
-          <div class="meta-box">
-            <table style="width:100%; font-size:13px;">
-              <tr>
-                <td><strong>رقم أمر الشراء:</strong> ${po.id}</td>
-                <td><strong>تاريخ التحرير:</strong> ${po.date}</td>
-              </tr>
-              <tr>
-                <td><strong>المورد المعتمد:</strong> ${po.supplierName}</td>
-                <td><strong>حالة التوريد:</strong> ${po.status === "Received" ? "مستلم وتمت التسوية" : "قيد الشحن والتوريد"}</td>
-              </tr>
-            </table>
-          </div>
-
-          <table class="items-table">
-            <thead>
-              <tr>
-                <th style="width: 50px;">#</th>
-                <th>الصنف المطلوب</th>
-                <th style="text-align: center; width: 100px;">الكمية</th>
-                <th style="text-align: right; width: 120px;">تكلفة الوحدة</th>
-                <th style="text-align: right; width: 120px;">المجموع</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${itemsHtml}
-            </tbody>
-          </table>
-
-          <table class="summary-table">
-            <tr style="font-weight: bold; font-size: 15px; color: #0f766e; background: #f1f5f9;">
-              <td style="padding: 10px;">إجمالي تكلفة الشراء</td>
-              <td style="text-align: right; padding: 10px; font-family: monospace;">SAR ${po.totalAmount.toFixed(2)}</td>
-            </tr>
-          </table>
-
-          <div style="clear: both;"></div>
-
-          <div class="footer">
-            <p>مستودعات مصنع معالجة البن والتوابل - نوفارو للأغذية</p>
-          </div>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
-  };
+  const calculatedTotal = poItems.reduce((acc, i) => acc + ((i.quantity || 0) * (i.price || 0)), 0);
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-5">
-        <div>
-          <span className="text-xs uppercase font-bold text-slate-400 tracking-widest font-mono">
-            {isAr ? "سلسلة الإمداد والمشتريات والجمارك" : "SUPPLY CHAIN, PROCUREMENT & INVENTORY BILLING"}
-          </span>
-          <h1 className="text-2xl font-black text-slate-900 flex items-center gap-2">
-            <Truck className="w-6 h-6 text-teal-700" />
-            {isAr ? "طلبات ومشتريات المواد الخام" : "Procurement & Purchase Orders (PO)"}
-          </h1>
-        </div>
+      {/* Standardized Page Header */}
+      <PageHeader
+        title="أوامر الشراء واستلام الشحنات"
+        titleEn="Purchase Orders & Cargo Intake"
+        description="إصدار أوامر التوريد ومتابعة وصول شحنات البن الأخضر ومواد التغليف والتخزين بمستودعات FIFO."
+        descriptionEn="Manage supply orders, green coffee cargo tracking, and automated FIFO inventory intake."
+        icon={Truck}
+        breadcrumbs={[
+          { label: "المشتريات والموردين", labelEn: "Purchases & SRM" },
+          { label: "أوامر الشراء", labelEn: "Purchase Orders", active: true }
+        ]}
+        primaryAction={{
+          label: "أمر شراء جديد",
+          labelEn: "New Purchase Order",
+          onClick: () => setShowNewPO(true),
+          icon: Plus
+        }}
+        language={language}
+      />
 
-        <button
-          onClick={() => setShowNewPO(!showNewPO)}
-          className="px-4 py-2 bg-primary hover:bg-primary/95 text-white font-bold text-sm rounded-xl transition flex items-center gap-2 shadow-xs"
-        >
-          <Plus className="w-4 h-4" />
-          <span>{isAr ? "إصدار أمر شراء جديد" : "Issue Purchase Order"}</span>
-        </button>
-      </div>
-
-      {/* New Purchase Order Form */}
+      {/* PO Creation Section */}
       {showNewPO && (
-        <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-slate-200 p-5 md:p-6 shadow-sm space-y-5 animate-fade-in">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-            <h3 className="font-extrabold text-slate-800 text-base">
-              {isAr ? "تحرير طلب شراء وتوريد خارجي" : "Draft Raw Purchase Order"}
-            </h3>
-            <span className="text-xs bg-indigo-50 text-indigo-700 font-bold px-2.5 py-1 rounded-full border border-indigo-150 flex items-center gap-1">
-              <Calendar className="w-3.5 h-3.5" />
-              {isAr ? "سريان أسعار الشراء والخصومات مفعل" : "Pricing Schedule & Freight Rates Active"}
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-500 block">
-                {isAr ? "المورد المعتمد للمواد الخام" : "Certified Raw Supplier"}
-              </label>
-              <select
-                value={selectedSupplierId}
-                onChange={(e) => setSelectedSupplierId(e.target.value)}
-                className="w-full text-xs p-2.5 rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus:ring-1 focus:ring-primary focus:bg-white transition"
-                required
-              >
-                <option value="">{isAr ? "-- اختر المورد --" : "-- Choose Vendor --"}</option>
-                {suppliers.map(s => (
-                  <option key={s.id} value={s.id}>
-                    {isAr ? s.nameAr : s.name} ({s.address})
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* Allocation of items */}
-          <div className="space-y-3">
-            <label className="text-xs font-bold text-slate-500 uppercase block">
-              {isAr ? "تفاصيل البضاعة المطلوبة" : "Cargo Allocation Line items"}
-            </label>
-
-            {poItems.map((item, idx) => (
-              <div key={idx} className="flex flex-wrap md:flex-nowrap items-center gap-3 bg-slate-50 p-3 rounded-lg border border-slate-200/80">
-                <div className="flex-1 min-w-[200px] space-y-1">
-                  <select
-                    value={item.itemId}
-                    onChange={(e) => handleItemChange(idx, "itemId", e.target.value)}
-                    className="w-full text-xs p-2 rounded border border-slate-200 bg-white"
-                    required
-                  >
-                    <option value="">{isAr ? "-- اختر مادة خام --" : "-- Select Raw Material --"}</option>
-                    {items.filter(i => i.price === 0).map(i => (
-                      <option key={i.id} value={i.id}>
-                        [{i.sku}] {isAr ? i.nameAr : i.name} (تكلفة معيارية: {i.cost} ر.س)
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="w-32 space-y-1">
-                  <input
-                    type="number"
-                    placeholder={isAr ? "الوزن (كجم)" : "Weight (kg)"}
-                    value={item.quantity || ""}
-                    onChange={(e) => handleItemChange(idx, "quantity", e.target.value)}
-                    className="w-full text-xs p-2 rounded border border-slate-200 bg-white text-center font-mono"
-                    min="1"
-                    required
-                  />
-                </div>
-
-                <div className="w-36 space-y-1">
-                  <div className="relative">
-                    <input
-                      type="number"
-                      placeholder={isAr ? "التكلفة (ريال)" : "Cost (SAR)"}
-                      value={item.price || ""}
-                      onChange={(e) => handleItemChange(idx, "price", e.target.value)}
-                      className="w-full text-xs p-2 rounded border border-slate-200 bg-white text-center font-mono"
-                      step="0.01"
-                      required
-                    />
-                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[9px] text-slate-400 font-bold">ر.س</span>
-                  </div>
-                </div>
-
-                <div className="w-28 text-center text-xs font-mono font-bold text-slate-600 bg-slate-100 p-2 rounded">
-                  {Number(item.quantity * item.price).toLocaleString()} ر.س
-                </div>
-
-                {poItems.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => removeRow(idx)}
-                    className="p-2 text-rose-500 hover:bg-rose-100 rounded-lg transition"
-                  >
-                    <Trash2 className="w-4.5 h-4.5" />
-                  </button>
-                )}
+        <form onSubmit={handleSubmit} className="animate-fade-in">
+          <FormSection
+            title={isAr ? "تحرير طلب شراء ومواد خام جديد" : "New Purchase Order Voucher"}
+            description={isAr ? "حدد المورد المعتمد وأدخل بنود الشحنة المطلوبة" : "Select vendor and cargo items"}
+            icon={Truck}
+            language={language}
+          >
+            {errorMessage && (
+              <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold rounded-lg mb-4">
+                {errorMessage}
               </div>
-            ))}
+            )}
 
-            <button
-              type="button"
-              onClick={addRow}
-              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-lg transition flex items-center gap-1"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>{isAr ? "إضافة بند توريد" : "Add procurement item"}</span>
-            </button>
-          </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+              <FormField label="مورد المواد الخام المعتمد" labelEn="Certified Raw Supplier" required language={language}>
+                <select
+                  value={selectedSupplierId}
+                  onChange={(e) => setSelectedSupplierId(e.target.value)}
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-teal-500/20 focus:border-teal-600 transition-all font-medium"
+                  required
+                >
+                  <option value="">{isAr ? "-- اختر المورد من الدليل --" : "-- Select Supplier --"}</option>
+                  {suppliers.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {isAr ? s.nameAr : s.name} ({s.address})
+                    </option>
+                  ))}
+                </select>
+              </FormField>
 
-          {errorMessage && (
-            <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg text-xs font-semibold">
-              {errorMessage}
+              <FormField label="تاريخ طلب التوريد" labelEn="Order Date" required language={language}>
+                <input
+                  type="date"
+                  defaultValue={new Date().toISOString().split("T")[0]}
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-teal-500/20 focus:border-teal-600 transition-all font-mono font-medium"
+                />
+              </FormField>
             </div>
-          )}
 
-          <div className="flex justify-end gap-3.5 border-t border-slate-100 pt-4">
-            <button
-              type="button"
-              onClick={() => {
-                setShowNewPO(false);
-                setPoItems([{ itemId: "", itemName: "", quantity: 0, price: 0 }]);
-                setSelectedSupplierId("");
-              }}
-              className="px-4 py-2 border border-slate-200 rounded-xl bg-white text-slate-600 font-semibold text-xs hover:bg-slate-50 transition"
-            >
-              {isAr ? "إلغاء التحرير" : "Cancel"}
-            </button>
-            <button
-              type="submit"
-              className="px-5 py-2 bg-slate-900 text-white font-bold text-xs rounded-xl hover:bg-slate-800 transition shadow-xs"
-            >
-              {isAr ? "حفظ كمسودة أمر شراء" : "Draft Purchase Order"}
-            </button>
-          </div>
+            {/* Line items table */}
+            <div className="space-y-2 border-t border-slate-100 pt-4">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold text-slate-800">
+                  {isAr ? "بنود الشحنة والكميات وتكلفة الشراء:" : "Cargo Items & Unit Cost:"}
+                </h4>
+                <button
+                  type="button"
+                  onClick={addRow}
+                  className="px-2.5 py-1 text-[11px] font-bold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded-lg transition-colors flex items-center gap-1"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>{isAr ? "+ إضافة صنف" : "+ Add Item"}</span>
+                </button>
+              </div>
+
+              <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                <table className="w-full text-xs text-right">
+                  <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+                    <tr>
+                      <th className="p-2.5">{isAr ? "الصنف" : "Item"}</th>
+                      <th className="p-2.5 w-28">{isAr ? "الكمية" : "Qty"}</th>
+                      <th className="p-2.5 w-32">{isAr ? "سعر التكلفة (SAR)" : "Unit Cost"}</th>
+                      <th className="p-2.5 w-32">{isAr ? "المجموع" : "Line Total"}</th>
+                      <th className="p-2.5 w-12 text-center"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {poItems.map((row, index) => (
+                      <tr key={index} className="hover:bg-slate-50/50">
+                        <td className="p-2">
+                          <select
+                            value={row.itemId}
+                            onChange={(e) => handleItemChange(index, "itemId", e.target.value)}
+                            className="w-full p-1.5 text-xs bg-white border border-slate-250 rounded-md focus:border-teal-600"
+                            required
+                          >
+                            <option value="">{isAr ? "-- اختر الصنف المطلوب --" : "-- Select Item --"}</option>
+                            {items.map((i) => (
+                              <option key={i.id} value={i.id}>
+                                {isAr ? i.nameAr : i.name} ({i.unit})
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="p-2">
+                          <input
+                            type="number"
+                            min="1"
+                            step="any"
+                            value={row.quantity || ""}
+                            onChange={(e) => handleItemChange(index, "quantity", e.target.value)}
+                            placeholder="0"
+                            className="w-full p-1.5 text-xs bg-white border border-slate-250 rounded-md text-center font-mono"
+                            required
+                          />
+                        </td>
+                        <td className="p-2">
+                          <input
+                            type="number"
+                            min="0"
+                            step="any"
+                            value={row.price || ""}
+                            onChange={(e) => handleItemChange(index, "price", e.target.value)}
+                            placeholder="0.00"
+                            className="w-full p-1.5 text-xs bg-white border border-slate-250 rounded-md text-center font-mono"
+                            required
+                          />
+                        </td>
+                        <td className="p-2 font-mono font-bold text-slate-800">
+                          SAR {((row.quantity || 0) * (row.price || 0)).toFixed(2)}
+                        </td>
+                        <td className="p-2 text-center">
+                          <button
+                            type="button"
+                            onClick={() => removeRow(index)}
+                            disabled={poItems.length <= 1}
+                            className="text-slate-400 hover:text-rose-600 disabled:opacity-30 p-1"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Total & Action Buttons */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-slate-100">
+              <div className="text-xs font-mono text-slate-600">
+                <span className="font-bold">{isAr ? "إجمالي قيمة أمر الشراء:" : "Total PO Amount:"}</span>{" "}
+                <strong className="text-sm font-black text-slate-900 font-mono">
+                  SAR {calculatedTotal.toFixed(2)}
+                </strong>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowNewPO(false)}
+                  className="px-4 py-2 border border-slate-300 rounded-lg bg-white text-slate-700 font-bold hover:bg-slate-50 transition-colors text-xs"
+                >
+                  {isAr ? "إلغاء" : "Cancel"}
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-teal-700 hover:bg-teal-800 text-white font-black rounded-lg transition-all text-xs shadow-sm shadow-teal-700/20"
+                >
+                  {isAr ? "اعتماد وإصدار أمر الشراء" : "Submit Purchase Order"}
+                </button>
+              </div>
+            </div>
+          </FormSection>
         </form>
       )}
 
-      {/* Purchase Orders List */}
-      <div className="space-y-4">
-        <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/60 flex items-center justify-between text-xs">
-          <div className="flex items-center gap-2">
-            <Sparkles className="w-4.5 h-4.5 text-teal-600" />
-            <span className="font-bold text-slate-700">
-              {isAr ? "نظام التدقيق الجمركي واستلام الشحنات الفوري نشط" : "Procurement lot audit and quick receipts enabled"}
-            </span>
-          </div>
-        </div>
-
+      {/* PO List Table */}
+      {purchaseOrders.length === 0 ? (
+        <EmptyState
+          title="لا توجد أوامر شراء حالياً"
+          titleEn="No Purchase Orders"
+          description="ابدأ بإصدار أول أمر شراء لتوريد البن الأخضر والمواد الخام للمستودعات."
+          descriptionEn="Create your first purchase order to stock raw coffee materials."
+          icon={Truck}
+          actionLabel="أمر شراء جديد"
+          actionLabelEn="New Purchase Order"
+          onAction={() => setShowNewPO(true)}
+          language={language}
+        />
+      ) : (
         <ERPTable
           data={purchaseOrders}
           columns={columns}
-          searchKeys={["id", "supplierName"]}
-          searchPlaceholder={isAr ? "ابحث برقم أمر الشراء أو المورد..." : "Search purchase orders..."}
+          searchKeys={["id", "supplierName", "status"]}
+          searchPlaceholder={isAr ? "🔎 بحث برقم الطلب أو اسم المورد..." : "🔎 Search POs..."}
           language={language}
-          title={isAr ? "أوامر الشراء والتوريد" : "Purchase Orders & Procurement"}
-          exportFileName="purchase_orders_report"
+          title={isAr ? "سجل أوامر الشراء والتوريد" : "Purchase Orders Register"}
+          exportFileName="purchase_orders_ledger"
           onRowClick={(row) => setSelectedPO(row)}
-          quickActions={
-            selectedPO && (
-              <div className="flex gap-1.5">
+        />
+      )}
+
+      {/* PO Preview Modal */}
+      {selectedPO && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-fade-in"
+        >
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-2xl w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <div className="flex items-center gap-2">
+                <Truck className="w-5 h-5 text-teal-700" />
+                <h3 className="font-black text-base text-slate-900">
+                  {isAr ? `أمر شراء وتوريد #${selectedPO.id}` : `Purchase Order #${selectedPO.id}`}
+                </h3>
+              </div>
+              <div className="flex items-center gap-2">
                 <button
-                  onClick={() => triggerPrintPO(selectedPO)}
-                  className="px-3 py-2 text-xs font-semibold bg-white border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-100 transition flex items-center gap-1.5 shadow-xs"
+                  type="button"
+                  onClick={() => window.print()}
+                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-xs flex items-center gap-1.5 transition-colors"
                 >
                   <Printer className="w-3.5 h-3.5" />
-                  <span>{isAr ? "طباعة تفويض الشراء" : "Print PO"}</span>
+                  <span>{isAr ? "طباعة" : "Print"}</span>
                 </button>
-                {selectedPO.status === "Draft" && (
-                  <button
-                    onClick={() => handleReceivePO(selectedPO.id)}
-                    className="px-3 py-2 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white rounded-lg transition flex items-center gap-1.5 shadow-xs"
-                  >
-                    <Truck className="w-3.5 h-3.5" />
-                    <span>{isAr ? "تفريع الشحنة بالمخازن" : "Receive Cargo"}</span>
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => setSelectedPO(null)}
+                  className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
-            )
-          }
-        />
-      </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 text-xs">
+              <div>
+                <span className="text-slate-400 block">{isAr ? "المورد التجاري:" : "Supplier:"}</span>
+                <span className="font-bold text-slate-800 text-sm">{selectedPO.supplierName}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block">{isAr ? "التاريخ:" : "Date:"}</span>
+                <span className="font-mono font-bold text-slate-800">{selectedPO.date}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block">{isAr ? "حالة الشحنة:" : "Cargo Status:"}</span>
+                <StatusBadge status={selectedPO.status === "Received" ? "Received" : "InTransit"} language={language} size="sm" />
+              </div>
+            </div>
+
+            {/* Line items */}
+            <div className="border border-slate-200 rounded-xl overflow-hidden">
+              <table className="w-full text-xs text-right">
+                <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+                  <tr>
+                    <th className="p-2.5">{isAr ? "الصنف" : "Item"}</th>
+                    <th className="p-2.5 text-center">{isAr ? "الكمية" : "Qty"}</th>
+                    <th className="p-2.5 text-center">{isAr ? "سعر التكلفة" : "Cost"}</th>
+                    <th className="p-2.5 text-left font-mono">{isAr ? "المجموع" : "Total"}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {selectedPO.items?.map((it: any, i: number) => (
+                    <tr key={i}>
+                      <td className="p-2.5 font-medium text-slate-800">{it.itemName}</td>
+                      <td className="p-2.5 text-center font-mono">{it.quantity}</td>
+                      <td className="p-2.5 text-center font-mono">SAR {Number(it.price).toFixed(2)}</td>
+                      <td className="p-2.5 text-left font-mono font-bold text-slate-800">
+                        SAR {Number(it.total).toFixed(2)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+              {selectedPO.status === "Draft" ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPoToReceive(selectedPO);
+                  }}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs transition-colors flex items-center gap-1.5 shadow-xs"
+                >
+                  <PackageCheck className="w-4 h-4" />
+                  <span>{isAr ? "فحص واستلام الشحنة مخزنياً" : "Receive Cargo to Stock"}</span>
+                </button>
+              ) : (
+                <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-lg border border-emerald-200">
+                  {isAr ? "✓ تم استلام هذه الشحنة وإضافتها لطبقات FIFO" : "✓ Received & allocated to FIFO"}
+                </span>
+              )}
+
+              <div className="text-left font-mono space-y-1">
+                <div className="text-sm font-black text-slate-900">
+                  {isAr ? "إجمالي أمر الشراء:" : "Total PO Amount:"}{" "}
+                  <span className="text-teal-700">SAR {Number(selectedPO.totalAmount).toFixed(2)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Receive Cargo Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={Boolean(poToReceive)}
+        onClose={() => setPoToReceive(null)}
+        onConfirm={handleConfirmReceive}
+        title="تأكيد استلام الشحنة وفحص الجودة؟"
+        titleEn="Confirm Cargo Receipt?"
+        description="سيتم إيداع كميات البضاعة في مستودع المواد الخام وتوليد دُفعات FIFO جديدة تلقائياً."
+        descriptionEn="Cargo items will be allocated to raw material warehouses and new FIFO batches created."
+        itemName={poToReceive ? `أمر شراء #${poToReceive.id} - ${poToReceive.supplierName}` : undefined}
+        confirmLabel="تأكيد الاستلام والتخزين"
+        confirmLabelEn="Confirm Receipt"
+        variant="primary"
+        language={language}
+      />
     </div>
   );
 }

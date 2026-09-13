@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useAppState } from "../context/StateContext";
 import { ShoppingBag, CreditCard, RefreshCw, Clipboard, ArrowRightLeft, User, Search, Plus, Trash2, Printer, CheckCircle, AlertTriangle, ShoppingCart } from "lucide-react";
 import ERPTable, { ColumnDef } from "./common/ERPTable";
+import PageHeader from "./common/PageHeader";
 
 interface DailySalesProps {
   language?: "ar" | "en";
@@ -306,56 +307,71 @@ export default function DailySalesModule({ language = "ar" }: DailySalesProps) {
 
   return (
     <div className="space-y-6">
-      {/* Module Title */}
-      <div className="border-b border-slate-200 pb-5">
-        <span className="text-xs uppercase font-bold text-amber-600 tracking-wider font-mono">
-          {isAr ? "إدارة الصالة والمبيعات الفورية" : "RETAIL SALES & DAILY TERMINAL WORKSTATION"}
-        </span>
-        <h1 className="text-3xl font-black text-slate-900 flex items-center gap-3">
-          <ShoppingBag className="w-8 h-8 text-teal-700" />
-          {isAr ? "محطة المبيعات اليومية" : "Daily Retail Sales"}
-        </h1>
-      </div>
+      {/* Standardized Page Header */}
+      <PageHeader
+        title="محطة المبيعات اليومية ونقاط البيع"
+        titleEn="Daily Retail & Over-the-Counter Sales"
+        description="تسجيل فواتير المعرض المباشرة، معالجة المرتجعات، وتوريد التحصيلات للصندوق تلقائياً."
+        descriptionEn="Counter POS sales, customer credit settlements, sales returns, and cashbox receipts."
+        icon={ShoppingBag}
+        breadcrumbs={[
+          { label: "المبيعات ونقاط البيع", labelEn: "Sales & POS" },
+          { 
+            label: activeTab === "pos" ? "نقاط بيع فورية" :
+                   activeTab === "return" ? "مرتجع مبيعات" :
+                   activeTab === "transfer" ? "تحويل لحساب العميل" : "سجل فواتير اليوم",
+            labelEn: activeTab === "pos" ? "POS Terminal" :
+                     activeTab === "return" ? "Sales Returns" :
+                     activeTab === "transfer" ? "Credit Settlement" : "Today's Logs",
+            active: true 
+          }
+        ]}
+        language={language}
+      />
 
-      {/* Touch-Friendly Navigation Tabs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 bg-slate-100 p-2 rounded-2xl">
+      {/* Standardized Secondary Navigation Tabs */}
+      <div className="flex items-center gap-1.5 p-1 bg-slate-100/90 rounded-xl border border-slate-200/80 overflow-x-auto text-xs font-bold">
         <button
+          type="button"
           onClick={() => setActiveTab("pos")}
-          className={`flex items-center justify-center gap-3 py-4 rounded-xl font-bold text-base transition-all duration-200 ${
-            activeTab === "pos" ? "bg-teal-700 text-white shadow-md scale-102" : "bg-white text-slate-600 hover:bg-slate-50"
+          className={`flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg transition-all ${
+            activeTab === "pos" ? "bg-white text-slate-900 shadow-xs border border-slate-200/60" : "text-slate-500 hover:text-slate-800"
           }`}
         >
-          <ShoppingCart className="w-5 h-5" />
+          <ShoppingCart className="w-4 h-4" />
           <span>{isAr ? "نقاط بيع فورية" : "POS Sale"}</span>
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveTab("return")}
-          className={`flex items-center justify-center gap-3 py-4 rounded-xl font-bold text-base transition-all duration-200 ${
-            activeTab === "return" ? "bg-teal-700 text-white shadow-md scale-102" : "bg-white text-slate-600 hover:bg-slate-50"
+          className={`flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg transition-all ${
+            activeTab === "return" ? "bg-white text-slate-900 shadow-xs border border-slate-200/60" : "text-slate-500 hover:text-slate-800"
           }`}
         >
-          <RefreshCw className="w-5 h-5" />
+          <RefreshCw className="w-4 h-4" />
           <span>{isAr ? "مرتجع مبيعات" : "Returns"}</span>
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveTab("transfer")}
-          className={`flex items-center justify-center gap-3 py-4 rounded-xl font-bold text-base transition-all duration-200 ${
-            activeTab === "transfer" ? "bg-teal-700 text-white shadow-md scale-102" : "bg-white text-slate-600 hover:bg-slate-50"
+          className={`flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg transition-all ${
+            activeTab === "transfer" ? "bg-white text-slate-900 shadow-xs border border-slate-200/60" : "text-slate-500 hover:text-slate-800"
           }`}
         >
-          <ArrowRightLeft className="w-5 h-5" />
+          <ArrowRightLeft className="w-4 h-4" />
           <span>{isAr ? "تحويل لحساب العميل" : "Customer Settle"}</span>
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveTab("log")}
-          className={`flex items-center justify-center gap-3 py-4 rounded-xl font-bold text-base transition-all duration-200 ${
-            activeTab === "log" ? "bg-teal-700 text-white shadow-md scale-102" : "bg-white text-slate-600 hover:bg-slate-50"
+          className={`flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg transition-all ${
+            activeTab === "log" ? "bg-white text-slate-900 shadow-xs border border-slate-200/60" : "text-slate-500 hover:text-slate-800"
           }`}
         >
-          <Clipboard className="w-5 h-5" />
+          <Clipboard className="w-4 h-4" />
           <span>{isAr ? "سجل فواتير اليوم" : "Today's Logs"}</span>
         </button>
       </div>

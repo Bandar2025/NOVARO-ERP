@@ -5,6 +5,7 @@ import {
   ShoppingCart, Plus, Minus, Trash2, Check, FileText, 
   DollarSign, Tag, Info, UserCheck, RefreshCw, Printer, Landmark, Sparkles
 } from "lucide-react";
+import PageHeader from "./common/PageHeader";
 
 interface CartItem {
   item: Item;
@@ -197,7 +198,21 @@ export default function PosModule({ language = "ar" }: PosModuleProps) {
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6" id="novaro-pos">
+    <div className="space-y-6" id="novaro-pos">
+      <PageHeader
+        title="كاشير ونقاط البيع السريعة"
+        titleEn="Retail Point of Sale (POS)"
+        description="إصدار فواتير نقاط البيع الفورية، احتساب ضريبة القيمة المضافة، وطباعة الإيصالات المبسطة."
+        descriptionEn="Instant retail cash checkout, automated VAT calculation, and simplified tax receipts."
+        icon={ShoppingCart}
+        breadcrumbs={[
+          { label: "المبيعات والعملاء", labelEn: "Sales & CRM" },
+          { label: "كاشير نقاط البيع", labelEn: "Retail POS Terminal", active: true }
+        ]}
+        language={language}
+      />
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       
       {/* 1. Retail Catalog (Left Column) */}
       <div className="lg:col-span-2 space-y-5">
@@ -392,6 +407,7 @@ export default function PosModule({ language = "ar" }: PosModuleProps) {
           </div>
         )}
 
+        </div>
       </div>
 
     </div>

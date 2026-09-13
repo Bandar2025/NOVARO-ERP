@@ -13,6 +13,8 @@ export interface ColumnDef {
   editable?: boolean;
   type?: "text" | "number" | "select" | "date";
   options?: { value: any; label: string }[];
+  sortable?: boolean;
+  width?: string;
 }
 
 interface ERPTableProps {

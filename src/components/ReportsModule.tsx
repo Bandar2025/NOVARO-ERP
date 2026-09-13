@@ -4,6 +4,7 @@ import {
   FileText, Flame, Layers2, Landmark, ShieldCheck, Printer, CheckCircle, AlertTriangle, Scale, Calculator
 } from "lucide-react";
 import ERPTable, { ColumnDef } from "./common/ERPTable";
+import PageHeader from "./common/PageHeader";
 import { TrialBalanceRow } from "../core/application/accounting/AccountingEngine";
 
 interface ReportsModuleProps {
@@ -118,90 +119,112 @@ export default function ReportsModule({ language = "ar" }: ReportsModuleProps) {
 
   return (
     <div className="space-y-6">
-      {/* Title */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-5">
-        <div>
-          <span className="text-xs uppercase font-bold text-teal-700 tracking-wider font-mono">
-            {isAr ? "الحسابات الختامية المعمدة والمصدقة دفتر القيود" : "CERTIFIED AUDITED FINANCIAL STATEMENTS"}
-          </span>
-          <h1 className="text-3xl font-black text-slate-900 flex items-center gap-3">
-            <FileText className="w-8 h-8 text-teal-700" />
-            {isAr ? "التقارير المحاسبية والمالية" : "Accounting Reports"}
-          </h1>
-        </div>
+      {/* Standardized Page Header */}
+      <PageHeader
+        title="التقارير المحاسبية والمالية المعتمدة"
+        titleEn="Certified Financial Statements & Ledgers"
+        description="قوائم الدخل والميزانية العمومية وميزان المراجعة وفق معايير المحاسبة الدولية IFRS / SOCPA."
+        descriptionEn="Audited income statements, balance sheets, and trial balances derived directly from the double-entry general ledger."
+        icon={FileText}
+        breadcrumbs={[
+          { label: "المحاسبة والمالية", labelEn: "Accounting & Finance" },
+          { 
+            label: activeReport === "unified" ? "قائمة الدخل" :
+                   activeReport === "trial_balance" ? "ميزان المراجعة" :
+                   activeReport === "balance_sheet" ? "الميزانية العمومية" :
+                   activeReport === "roastery" ? "تكاليف التحميص" :
+                   activeReport === "grinding" ? "تكاليف المطحنة" : "شهادة الاعتماد والرقابة",
+            labelEn: activeReport === "unified" ? "Income Statement" :
+                     activeReport === "trial_balance" ? "Trial Balance" :
+                     activeReport === "balance_sheet" ? "Balance Sheet" :
+                     activeReport === "roastery" ? "Roastery Costs" :
+                     activeReport === "grinding" ? "Grinding Costs" : "Certification",
+            active: true 
+          }
+        ]}
+        language={language}
+        actions={
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleRunAudit}
+              className="px-3.5 py-2 bg-teal-50 hover:bg-teal-100 text-teal-800 font-bold text-xs rounded-xl transition flex items-center gap-1.5 border border-teal-200"
+            >
+              <ShieldCheck className="w-4 h-4 text-teal-700" />
+              <span>{isAr ? "فحص السلامة المحاسبية" : "Audit Invariants"}</span>
+            </button>
+            <button
+              type="button"
+              onClick={handlePrint}
+              className="px-4 py-2 bg-slate-900 hover:bg-black text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shadow-xs"
+            >
+              <Printer className="w-4 h-4" />
+              <span>{isAr ? "طباعة التقرير" : "Print Report"}</span>
+            </button>
+          </div>
+        }
+      />
 
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleRunAudit}
-            className="px-4 py-3 bg-teal-50 hover:bg-teal-100 text-teal-800 font-bold text-xs rounded-xl transition flex items-center gap-2 border border-teal-200"
-          >
-            <ShieldCheck className="w-4 h-4 text-teal-700" />
-            <span>{isAr ? "فحص السلامة المحاسبية" : "Audit Invariants"}</span>
-          </button>
-          <button
-            onClick={handlePrint}
-            className="px-5 py-3 bg-slate-900 hover:bg-black text-white font-bold text-sm rounded-xl transition flex items-center gap-2 shadow-xs"
-          >
-            <Printer className="w-5 h-5" />
-            <span>{isAr ? "طباعة التقرير" : "Print Report"}</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Subnavigation Tabs */}
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-2 bg-slate-100 p-2 rounded-2xl">
+      {/* Standardized Subnavigation Tabs */}
+      <div className="flex items-center gap-1.5 p-1 bg-slate-100/90 rounded-xl border border-slate-200/80 overflow-x-auto text-xs font-bold">
         <button
+          type="button"
           onClick={() => setActiveReport("unified")}
-          className={`py-3 rounded-xl font-bold text-xs transition ${
-            activeReport === "unified" ? "bg-teal-700 text-white shadow-xs" : "bg-white text-slate-600 hover:bg-slate-50"
+          className={`px-3.5 py-2 rounded-lg transition-all ${
+            activeReport === "unified" ? "bg-white text-slate-900 shadow-xs border border-slate-200/60" : "text-slate-500 hover:text-slate-800"
           }`}
         >
           {isAr ? "قائمة الدخل الموحدة" : "Income Statement"}
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveReport("trial_balance")}
-          className={`py-3 rounded-xl font-bold text-xs transition ${
-            activeReport === "trial_balance" ? "bg-teal-700 text-white shadow-xs" : "bg-white text-slate-600 hover:bg-slate-50"
+          className={`px-3.5 py-2 rounded-lg transition-all ${
+            activeReport === "trial_balance" ? "bg-white text-slate-900 shadow-xs border border-slate-200/60" : "text-slate-500 hover:text-slate-800"
           }`}
         >
           {isAr ? "ميزان المراجعة" : "Trial Balance"}
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveReport("balance_sheet")}
-          className={`py-3 rounded-xl font-bold text-xs transition ${
-            activeReport === "balance_sheet" ? "bg-teal-700 text-white shadow-xs" : "bg-white text-slate-600 hover:bg-slate-50"
+          className={`px-3.5 py-2 rounded-lg transition-all ${
+            activeReport === "balance_sheet" ? "bg-white text-slate-900 shadow-xs border border-slate-200/60" : "text-slate-500 hover:text-slate-800"
           }`}
         >
           {isAr ? "الميزانية العمومية" : "Balance Sheet"}
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveReport("roastery")}
-          className={`py-3 rounded-xl font-bold text-xs transition ${
-            activeReport === "roastery" ? "bg-teal-700 text-white shadow-xs" : "bg-white text-slate-600 hover:bg-slate-50"
+          className={`px-3.5 py-2 rounded-lg transition-all ${
+            activeReport === "roastery" ? "bg-white text-slate-900 shadow-xs border border-slate-200/60" : "text-slate-500 hover:text-slate-800"
           }`}
         >
           {isAr ? "أرباح قسم المحمصة" : "Roastery Report"}
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveReport("grinding")}
-          className={`py-3 rounded-xl font-bold text-xs transition ${
-            activeReport === "grinding" ? "bg-teal-700 text-white shadow-xs" : "bg-white text-slate-600 hover:bg-slate-50"
+          className={`px-3.5 py-2 rounded-lg transition-all ${
+            activeReport === "grinding" ? "bg-white text-slate-900 shadow-xs border border-slate-200/60" : "text-slate-500 hover:text-slate-800"
           }`}
         >
           {isAr ? "أرباح قسم الطاحونة" : "Grinding Report"}
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveReport("certification")}
-          className={`py-3 rounded-xl font-bold text-xs transition flex items-center justify-center gap-1.5 ${
-            activeReport === "certification" ? "bg-slate-900 text-white shadow-xs" : "bg-white text-slate-600 hover:bg-slate-50"
+          className={`px-3.5 py-2 rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+            activeReport === "certification" ? "bg-white text-slate-900 shadow-xs border border-slate-200/60" : "text-slate-500 hover:text-slate-800"
           }`}
         >
-          <ShieldCheck className="w-3.5 h-3.5 text-teal-400" />
+          <ShieldCheck className="w-3.5 h-3.5 text-teal-600" />
           {isAr ? "شهادة الاعتماد" : "Certification"}
         </button>
       </div>

@@ -1,7 +1,13 @@
 import React, { useState } from "react";
 import { useAppState } from "../context/StateContext";
-import { Users, FileText, Landmark, ShieldAlert, ArrowDownCircle, ArrowUpCircle, Printer, Plus, Trash2, Edit, X, Search, DollarSign } from "lucide-react";
+import { Users, FileText, Landmark, ShieldAlert, ArrowDownCircle, ArrowUpCircle, Printer, Plus, Trash2, Edit3, X, Search, DollarSign, Receipt } from "lucide-react";
 import ERPTable, { ColumnDef } from "./common/ERPTable";
+import PageHeader from "./common/PageHeader";
+import ConfirmDialog from "./common/ConfirmDialog";
+import FormSection from "./common/FormSection";
+import FormField from "./common/FormField";
+import EmptyState from "./common/EmptyState";
+import StatusBadge from "./common/StatusBadge";
 
 interface CustomerLedgerProps {
   language?: "ar" | "en";
@@ -26,10 +32,13 @@ export default function CustomerLedgerModule({ language = "ar" }: CustomerLedger
   const [email, setEmail] = useState("");
   const [address, setAddress] = useState("");
 
-  // Collection receipt form state (direct collection on this screen!)
+  // Collection receipt form state
   const [showCollectForm, setShowCollectForm] = useState(false);
   const [collectAmount, setCollectAmount] = useState<number>(0);
   const [collectNotes, setCollectNotes] = useState("");
+
+  // Confirm delete state
+  const [customerToDelete, setCustomerToDelete] = useState<any | null>(null);
 
   // Statistics
   const totalReceivables = customers.reduce((sum, c) => sum + (c.balance || 0), 0);
@@ -66,7 +75,7 @@ export default function CustomerLedgerModule({ language = "ar" }: CustomerLedger
 
     if (editingCustomer) {
       updateCustomer(editingCustomer.id, {
-        name: nameAr, // Synced to English too for fallback
+        name: nameAr,
         nameAr,
         email,
         phone,
@@ -99,7 +108,7 @@ export default function CustomerLedgerModule({ language = "ar" }: CustomerLedger
     if (!selectedCustomerId || collectAmount <= 0) {
       addToast({
         type: "warning",
-        message: "يرجى كتابة مبلغ سداد صحيح.",
+        message: "يرجى كتابة مبلغ سداد صحيح أكبر من الصفر.",
         messageEn: "Please write a correct receipt amount."
       });
       return;
@@ -141,7 +150,7 @@ export default function CustomerLedgerModule({ language = "ar" }: CustomerLedger
 
     addToast({
       type: "success",
-      message: `تم إيداع الدفعة بقيمة ${collectAmount.toLocaleString()} ريال بنجاح وتنزيل المديونية.`,
+      message: `تم إيداع الدفعة بقيمة ${collectAmount.toLocaleString()} ريال بنجاح وتنزيل المديونية وترحيل الصندوق.`,
       messageEn: `Collected SAR ${collectAmount} from customer.`
     });
 
@@ -150,8 +159,15 @@ export default function CustomerLedgerModule({ language = "ar" }: CustomerLedger
     setShowCollectForm(false);
   };
 
-  const handlePrintStatement = () => {
-    window.print();
+  const confirmDelete = () => {
+    if (!customerToDelete) return;
+    deleteCustomer(customerToDelete.id);
+    addToast({
+      type: "info",
+      message: `تم حذف العميل [${customerToDelete.nameAr}]`,
+      messageEn: `Customer [${customerToDelete.name}] deleted`
+    });
+    setCustomerToDelete(null);
   };
 
   // Directories Columns
@@ -166,7 +182,7 @@ export default function CustomerLedgerModule({ language = "ar" }: CustomerLedger
       headerEn: "Balance (SAR)",
       render: (val) => (
         <span className={`font-mono font-bold ${Number(val) > 0 ? "text-rose-600" : "text-emerald-600"}`}>
-          SAR {Number(val).toLocaleString()}
+          SAR {Number(val).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </span>
       )
     },
@@ -175,31 +191,27 @@ export default function CustomerLedgerModule({ language = "ar" }: CustomerLedger
       header: "خيارات العمليات",
       headerEn: "Actions",
       render: (_, row) => (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
           <button
+            type="button"
             onClick={() => handleOpenEdit(row)}
-            className="p-1 text-slate-500 hover:text-teal-700 hover:bg-slate-100 rounded transition"
+            title={isAr ? "تعديل بيانات العميل" : "Edit Customer"}
+            className="p-1.5 text-slate-500 hover:text-teal-700 hover:bg-slate-100 rounded-lg transition"
           >
-            <Edit className="w-4 h-4" />
+            <Edit3 className="w-3.5 h-3.5" />
           </button>
           <button
-            onClick={() => {
-              if (confirm(isAr ? "هل أنت متأكد من حذف العميل؟" : "Delete customer?")) {
-                deleteCustomer(row.id);
-              }
-            }}
-            className="p-1 text-slate-500 hover:text-rose-600 hover:bg-slate-100 rounded transition"
+            type="button"
+            onClick={() => setCustomerToDelete(row)}
+            title={isAr ? "حذف العميل" : "Delete Customer"}
+            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
           >
-            <Trash2 className="w-4 h-4" />
+            <Trash2 className="w-3.5 h-3.5" />
           </button>
         </div>
       )
     }
   ];
-
-  // Filter movements for selected client
-  const clientMovements = customerMovements.filter(mov => mov.customerId === selectedCustomerId);
-  const selectedCustomerObj = customers.find(c => c.id === selectedCustomerId);
 
   // Movements Column
   const movementColumns: ColumnDef[] = [
@@ -224,370 +236,381 @@ export default function CustomerLedgerModule({ language = "ar" }: CustomerLedger
       headerEn: "Amount (SAR)", 
       render: (val, row) => (
         <span className={`font-mono font-bold ${row.type === "sale" ? "text-rose-600" : "text-emerald-600"}`}>
-          {row.type === "sale" ? "+" : "-"} SAR {Number(val).toLocaleString()}
+          {row.type === "sale" ? "+" : "-"} SAR {Number(val).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </span>
       ) 
     }
   ];
 
+  const clientMovements = customerMovements.filter(mov => mov.customerId === selectedCustomerId);
+  const selectedCustomerObj = customers.find(c => c.id === selectedCustomerId);
+
   return (
     <div className="space-y-6">
-      {/* Module Title */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-5">
-        <div>
-          <span className="text-xs uppercase font-bold text-amber-600 tracking-wider font-mono">
-            {isAr ? "الذمم المدينة والدفتر المالي الموحد" : "ACCOUNTS RECEIVABLES & CRM LEDGERS"}
-          </span>
-          <h1 className="text-3xl font-black text-slate-900 flex items-center gap-3">
-            <Landmark className="w-8 h-8 text-teal-700" />
-            {isAr ? "دفتر مديونيات العملاء" : "Customer Accounts Ledger"}
-          </h1>
+      {/* Standardized Page Header */}
+      <PageHeader
+        title="دفتر مديونيات وكشوفات العملاء"
+        titleEn="Customer Accounts & Debts Subledger"
+        description="كشوفات حساب تفصيلية، تحصيل المديونيات النقدية والآجلة، وتتبع حركات الفواتير."
+        descriptionEn="Detailed customer statements, cash collections, receivable movements, and ledger reconciliation."
+        icon={Landmark}
+        breadcrumbs={[
+          { label: "المبيعات والعملاء", labelEn: "Sales & CRM" },
+          { label: "سجل حسابات العملاء", labelEn: "Customer Subledger", active: true }
+        ]}
+        primaryAction={{
+          label: "تسجيل سند تحصيل",
+          labelEn: "Record Collection",
+          onClick: () => setShowCollectForm(true),
+          icon: DollarSign
+        }}
+        secondaryActions={[
+          {
+            label: "إضافة عميل جديد",
+            labelEn: "New Customer",
+            onClick: () => {
+              handleCloseForm();
+              setShowForm(true);
+            },
+            icon: Plus
+          }
+        ]}
+        language={language}
+      />
+
+      {/* KPI Cards Strip */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-white p-4.5 rounded-xl border border-slate-200/80 shadow-2xs flex items-center gap-3.5">
+          <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700">
+            <ArrowDownCircle className="w-5 h-5" />
+          </div>
+          <div>
+            <span className="text-xs font-semibold text-slate-400 block">{isAr ? "إجمالي الديون المستحقة" : "Total Receivables"}</span>
+            <span className="text-lg font-black font-mono text-rose-600">SAR {totalReceivables.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          </div>
         </div>
 
-        <button
-          onClick={() => {
-            handleCloseForm();
-            setShowForm(true);
-          }}
-          className="px-5 py-3 bg-teal-700 hover:bg-teal-800 text-white font-bold text-sm rounded-xl transition flex items-center gap-2 shadow-md shadow-teal-700/20"
-        >
-          <Plus className="w-5 h-5" />
-          <span>{isAr ? "تسجيل عميل جديد" : "New Customer"}</span>
-        </button>
+        <div className="bg-white p-4.5 rounded-xl border border-slate-200/80 shadow-2xs flex items-center gap-3.5">
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-700">
+            <ShieldAlert className="w-5 h-5" />
+          </div>
+          <div>
+            <span className="text-xs font-semibold text-slate-400 block">{isAr ? "العملاء المدينون" : "Indebted Clients"}</span>
+            <span className="text-lg font-black font-mono text-slate-900">{indebtedCount} {isAr ? "عميل" : "clients"}</span>
+          </div>
+        </div>
+
+        <div className="bg-white p-4.5 rounded-xl border border-slate-200/80 shadow-2xs flex items-center gap-3.5">
+          <div className="p-3 bg-teal-50 border border-teal-200 rounded-xl text-teal-700">
+            <Receipt className="w-5 h-5" />
+          </div>
+          <div>
+            <span className="text-xs font-semibold text-slate-400 block">{isAr ? "حركات الذمم المسجلة" : "Total Ledger Entries"}</span>
+            <span className="text-lg font-black font-mono text-slate-900">{customerMovements.length}</span>
+          </div>
+        </div>
       </div>
 
-      {/* KPI Overviews */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-xs flex items-center gap-4">
-          <div className="p-3 bg-rose-50 rounded-lg text-rose-600">
-            <ShieldAlert className="w-6 h-6" />
-          </div>
-          <div>
-            <span className="text-xs font-bold text-slate-400 block">{isAr ? "إجمالي الديون المعلقة" : "Total Outstanding Debt"}</span>
-            <span className="text-xl font-extrabold font-mono text-rose-600">SAR {totalReceivables.toLocaleString()}</span>
-          </div>
-        </div>
-
-        <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-xs flex items-center gap-4">
-          <div className="p-3 bg-teal-50 rounded-lg text-teal-600">
-            <Users className="w-6 h-6" />
-          </div>
-          <div>
-            <span className="text-xs font-bold text-slate-400 block">{isAr ? "عدد العملاء المدينين" : "Indebted Customers"}</span>
-            <span className="text-xl font-extrabold font-mono text-slate-900">{indebtedCount} {isAr ? "عملاء" : "clients"}</span>
-          </div>
-        </div>
-
-        <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-xs flex items-center gap-4">
-          <div className="p-3 bg-emerald-50 rounded-lg text-emerald-600">
-            <ArrowDownCircle className="w-6 h-6" />
-          </div>
-          <div>
-            <span className="text-xs font-bold text-slate-400 block">{isAr ? "متوسط فترة السداد" : "Avg Collection Period"}</span>
-            <span className="text-sm font-bold text-slate-700">{isAr ? "24 يوماً (ممتاز)" : "24 Days (Excellent)"}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Touch-Friendly Subnavigation */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 bg-slate-100 p-2 rounded-2xl">
+      {/* Secondary Navigation Tabs */}
+      <div className="flex items-center gap-2 border-b border-slate-200 pb-2 overflow-x-auto">
         <button
+          type="button"
           onClick={() => setActiveTab("directory")}
-          className={`py-3.5 rounded-xl font-bold text-sm transition ${
-            activeTab === "directory" ? "bg-teal-700 text-white shadow-xs" : "bg-white text-slate-600 hover:bg-slate-50"
+          className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+            activeTab === "directory"
+              ? "bg-teal-700 text-white shadow-xs"
+              : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
           }`}
         >
-          {isAr ? "سجل العملاء" : "Directory"}
+          {isAr ? "دليل حسابات العملاء" : "Clients Directory"}
         </button>
-
         <button
+          type="button"
           onClick={() => setActiveTab("statement")}
-          className={`py-3.5 rounded-xl font-bold text-sm transition ${
-            activeTab === "statement" ? "bg-teal-700 text-white shadow-xs" : "bg-white text-slate-600 hover:bg-slate-50"
+          className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+            activeTab === "statement"
+              ? "bg-teal-700 text-white shadow-xs"
+              : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
           }`}
         >
           {isAr ? "كشف حساب تفصيلي" : "Detailed Statement"}
         </button>
-
         <button
+          type="button"
           onClick={() => setActiveTab("debts")}
-          className={`py-3.5 rounded-xl font-bold text-sm transition ${
-            activeTab === "debts" ? "bg-teal-700 text-white shadow-xs" : "bg-white text-slate-600 hover:bg-slate-50"
+          className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+            activeTab === "debts"
+              ? "bg-teal-700 text-white shadow-xs"
+              : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
           }`}
         >
-          {isAr ? "كشف الديون المتأخرة" : "Outstanding Debts"}
+          {isAr ? "تقرير الديون والتحصيل" : "Outstanding Debts"}
         </button>
-
         <button
+          type="button"
           onClick={() => setActiveTab("movements")}
-          className={`py-3.5 rounded-xl font-bold text-sm transition ${
-            activeTab === "movements" ? "bg-teal-700 text-white shadow-xs" : "bg-white text-slate-600 hover:bg-slate-50"
+          className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+            activeTab === "movements"
+              ? "bg-teal-700 text-white shadow-xs"
+              : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
           }`}
         >
-          {isAr ? "سجل الحركات العام" : "General Logs"}
+          {isAr ? "سجل كافة الحركات" : "All Movements Log"}
         </button>
       </div>
 
-      {/* Forms and Popups */}
-      {showForm && (
-        <form onSubmit={handleCustomerSubmit} className="bg-white rounded-xl border border-slate-200 p-5 shadow-md space-y-4 max-w-lg mx-auto">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-            <h3 className="font-extrabold text-slate-800 text-sm">
-              {editingCustomer ? (isAr ? `تحديث العميل: ${editingCustomer.nameAr}` : "Edit Customer") : (isAr ? "إضافة عميل جديد" : "New Customer")}
-            </h3>
-            <button type="button" onClick={handleCloseForm} className="p-1 hover:bg-slate-100 rounded-full">
-              <X className="w-4 h-4 text-slate-400" />
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 text-xs">
-            <div className="space-y-1">
-              <label className="font-bold text-slate-500">{isAr ? "اسم العميل الكامل *" : "Customer Name *"}</label>
-              <input
-                type="text"
-                value={nameAr}
-                onChange={(e) => setNameAr(e.target.value)}
-                placeholder="اسم العميل أو اسم المحل"
-                className="w-full p-2.5 rounded-lg border border-slate-200 bg-slate-50 text-xs"
-                required
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="font-bold text-slate-500">{isAr ? "رقم الجوال" : "Phone"}</label>
-              <input
-                type="text"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="05xxxxxx"
-                className="w-full p-2.5 rounded-lg border border-slate-200 bg-slate-50 text-xs"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="font-bold text-slate-500">{isAr ? "البريد الإلكتروني" : "Email"}</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="info@customer.sa"
-                className="w-full p-2.5 rounded-lg border border-slate-200 bg-slate-50 text-xs"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="font-bold text-slate-500">{isAr ? "العنوان التجاري" : "Corporate Address"}</label>
-              <input
-                type="text"
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                placeholder="المدينة، الحي"
-                className="w-full p-2.5 rounded-lg border border-slate-200 bg-slate-50 text-xs"
-              />
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            className="w-full py-3 bg-teal-700 hover:bg-teal-800 text-white font-bold rounded-xl transition text-xs"
+      {/* Collection Form Modal / Section */}
+      {showCollectForm && (
+        <form onSubmit={handleCollectSubmit} className="animate-fade-in">
+          <FormSection
+            title={isAr ? "تسجيل سند قبض وتحصيل مالي" : "Record Customer Payment Receipt"}
+            description={isAr ? "إيداع دفعة نقدية وتنزيل رصيد مديونية العميل فوراً وترحيل الصندوق" : "Direct debt deduction"}
+            icon={DollarSign}
+            language={language}
           >
-            {isAr ? "حفظ العميل" : "Save Customer"}
-          </button>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <FormField label="العميل المدين" labelEn="Indebted Client" required language={language}>
+                <select
+                  value={selectedCustomerId}
+                  onChange={(e) => setSelectedCustomerId(e.target.value)}
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-teal-500/20 focus:border-teal-600 transition-all font-medium"
+                  required
+                >
+                  <option value="">{isAr ? "-- اختر العميل --" : "-- Select Customer --"}</option>
+                  {customers.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.nameAr} (المديونية: SAR {c.balance?.toLocaleString() || 0})
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+
+              <FormField label="المبلغ المحصل (ريال)" labelEn="Receipt Amount (SAR)" required language={language}>
+                <input
+                  type="number"
+                  min="1"
+                  step="any"
+                  value={collectAmount || ""}
+                  onChange={(e) => setCollectAmount(parseFloat(e.target.value) || 0)}
+                  placeholder="0.00"
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-teal-500/20 focus:border-teal-600 transition-all font-mono font-bold text-emerald-700"
+                  required
+                />
+              </FormField>
+
+              <FormField label="بيان السند / ملاحظات" labelEn="Receipt Notes" language={language}>
+                <input
+                  type="text"
+                  value={collectNotes}
+                  onChange={(e) => setCollectNotes(e.target.value)}
+                  placeholder={isAr ? "تحصيل دفعة نقدية بموجب إيصال" : "Cash collection receipt"}
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-teal-500/20 focus:border-teal-600 transition-all font-medium"
+                />
+              </FormField>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowCollectForm(false)}
+                className="px-4 py-2 border border-slate-300 rounded-lg bg-white text-slate-700 font-bold hover:bg-slate-50 transition-colors text-xs"
+              >
+                {isAr ? "إلغاء" : "Cancel"}
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-lg transition-all text-xs shadow-sm shadow-emerald-600/20"
+              >
+                {isAr ? "حفظ سند القبض وتنزيل الرصيد" : "Save Receipt & Deduct"}
+              </button>
+            </div>
+          </FormSection>
         </form>
       )}
 
-      {/* Directory Tab */}
-      {activeTab === "directory" && (
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
-          <ERPTable
-            data={customers}
-            columns={directoryColumns}
+      {/* Customer Form Modal */}
+      {showForm && (
+        <form onSubmit={handleCustomerSubmit} className="animate-fade-in">
+          <FormSection
+            title={editingCustomer ? (isAr ? "تعديل العميل" : "Edit Customer") : (isAr ? "تسجيل عميل جديد" : "New Customer")}
+            icon={Users}
             language={language}
-          />
-        </div>
+          >
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <FormField label="اسم العميل" labelEn="Customer Name" required language={language}>
+                <input
+                  type="text"
+                  value={nameAr}
+                  onChange={(e) => setNameAr(e.target.value)}
+                  placeholder={isAr ? "اسم العميل التجاري" : "Customer Name"}
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:bg-white font-medium"
+                  required
+                />
+              </FormField>
+              <FormField label="رقم الجوال" labelEn="Phone" language={language}>
+                <input
+                  type="text"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="+966 50 000 0000"
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:bg-white font-mono"
+                />
+              </FormField>
+              <FormField label="البريد الإلكتروني" labelEn="Email" language={language}>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="finance@client.com"
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:bg-white"
+                />
+              </FormField>
+              <FormField label="العنوان" labelEn="Address" language={language}>
+                <input
+                  type="text"
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  placeholder="الرياض، السلي"
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:bg-white"
+                />
+              </FormField>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={handleCloseForm}
+                className="px-4 py-2 border border-slate-300 rounded-lg bg-white text-slate-700 font-bold hover:bg-slate-50 text-xs"
+              >
+                {isAr ? "إلغاء" : "Cancel"}
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-2 bg-teal-700 hover:bg-teal-800 text-white font-black rounded-lg text-xs"
+              >
+                {editingCustomer ? (isAr ? "حفظ التعديل" : "Save") : (isAr ? "إضافة العميل" : "Add")}
+              </button>
+            </div>
+          </FormSection>
+        </form>
       )}
 
-      {/* Detailed Statement Tab */}
+      {/* TAB 1: DIRECTORY */}
+      {activeTab === "directory" && (
+        <ERPTable
+          data={customers}
+          columns={directoryColumns}
+          searchKeys={["nameAr", "phone", "email", "id"]}
+          searchPlaceholder={isAr ? "🔎 بحث بالاسم أو الجوال..." : "🔎 Search customers..."}
+          language={language}
+          title={isAr ? "قائمة العملاء وأرصدة الديون" : "Customers Accounts List"}
+        />
+      )}
+
+      {/* TAB 2: STATEMENT */}
       {activeTab === "statement" && (
-        <div className="space-y-4">
-          <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <span className="text-xs font-bold text-slate-500">{isAr ? "اختر العميل لعرض الكشف:" : "Select Customer:"}</span>
+        <div className="bg-white rounded-2xl border border-slate-250 p-6 space-y-6 shadow-2xs">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pb-4 border-b border-slate-100">
+            <div className="w-full sm:w-80">
+              <label className="text-xs font-bold text-slate-600 block mb-1">
+                {isAr ? "اختر العميل لعرض كشف الحساب:" : "Select Client Statement:"}
+              </label>
               <select
                 value={selectedCustomerId}
                 onChange={(e) => setSelectedCustomerId(e.target.value)}
-                className="p-2 border border-slate-200 rounded-lg text-xs bg-slate-50 focus:outline-none focus:ring-1 focus:ring-teal-700 font-bold"
+                className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold"
               >
-                {customers.map(c => (
-                  <option key={c.id} value={c.id}>{c.nameAr}</option>
+                {customers.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.nameAr} (الرصيد: SAR {c.balance?.toLocaleString() || 0})
+                  </option>
                 ))}
               </select>
             </div>
 
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setShowCollectForm(!showCollectForm)}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg transition flex items-center gap-1.5"
-              >
-                <DollarSign className="w-4 h-4" />
-                <span>{isAr ? "تسجيل تحصيل / دفعة" : "Collect Payment"}</span>
-              </button>
-
-              <button
-                onClick={handlePrintStatement}
-                className="px-4 py-2 bg-slate-900 hover:bg-black text-white font-bold text-xs rounded-lg transition flex items-center gap-1.5"
-              >
-                <Printer className="w-4 h-4" />
-                <span>{isAr ? "طباعة كشف الحساب" : "Print Statement"}</span>
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => window.print()}
+              className="px-4 py-2 border border-slate-300 rounded-lg bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs flex items-center gap-1.5"
+            >
+              <Printer className="w-4 h-4" />
+              <span>{isAr ? "طباعة كشف الحساب" : "Print Statement"}</span>
+            </button>
           </div>
 
-          {/* Collection dialog overlay inside statement */}
-          {showCollectForm && (
-            <form onSubmit={handleCollectSubmit} className="bg-slate-50 border border-slate-200 p-5 rounded-xl max-w-md mx-auto space-y-3 animate-fade-in text-xs">
-              <div className="flex items-center justify-between border-b border-slate-200 pb-1">
-                <span className="font-extrabold text-slate-800">{isAr ? "سند قبض وتحصيل نقدي" : "Receipt Collection Voucher"}</span>
-                <button type="button" onClick={() => setShowCollectForm(false)} className="text-slate-400 hover:text-slate-600">
-                  <X className="w-4 h-4" />
-                </button>
+          {selectedCustomerObj && (
+            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div>
+                <h3 className="text-base font-black text-slate-900">{selectedCustomerObj.nameAr}</h3>
+                <span className="text-xs text-slate-500 font-mono">ID: {selectedCustomerObj.id} | {selectedCustomerObj.phone}</span>
               </div>
-
-              <div className="space-y-2">
-                <div>
-                  <label className="font-bold text-slate-500">{isAr ? "المبلغ المستلم (ريال) *" : "Receipt Amount (SAR) *"}</label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={collectAmount || ""}
-                    onChange={(e) => setCollectAmount(parseFloat(e.target.value) || 0)}
-                    className="w-full p-2 rounded border border-slate-200 font-mono font-bold"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="font-bold text-slate-500">{isAr ? "البيان / مرجع السند" : "Voucher Description"}</label>
-                  <input
-                    type="text"
-                    placeholder="مثال: تحصيل بشيك بنكي الراجحي"
-                    value={collectNotes}
-                    onChange={(e) => setCollectNotes(e.target.value)}
-                    className="w-full p-2 rounded border border-slate-200 text-xs"
-                  />
-                </div>
+              <div className="text-left">
+                <span className="text-xs text-slate-400 block">{isAr ? "صافي الرصيد الحالي" : "Net Balance"}</span>
+                <span className="text-xl font-black font-mono text-rose-600">
+                  SAR {selectedCustomerObj.balance?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || "0.00"}
+                </span>
               </div>
-
-              <button
-                type="submit"
-                className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded"
-              >
-                {isAr ? "ترحيل التحصيل وتغذية الصندوق" : "Post Receipt"}
-              </button>
-            </form>
+            </div>
           )}
 
-          {/* Printable Statement Area */}
-          <div id="print-area" className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-6">
-            <div className="flex flex-col sm:flex-row justify-between border-b border-slate-100 pb-4 gap-4">
-              <div className="text-right">
-                <h2 className="text-xl font-black text-slate-800">{isAr ? "كشف حساب عميل معتمد" : "Official Customer Statement"}</h2>
-                <p className="text-xs text-slate-400 mt-1">{isAr ? "تتبع حركات الذمم المدينة آلياً" : "Automatic receivables ledger statements."}</p>
-              </div>
-              <div className="text-left font-mono text-xs text-slate-500 space-y-1">
-                <div>{isAr ? `رقم العميل: ${selectedCustomerId}` : `ID: ${selectedCustomerId}`}</div>
-                <div>{isAr ? `تاريخ الطباعة: ${new Date().toLocaleDateString()}` : `Printed: ${new Date().toLocaleDateString()}`}</div>
-              </div>
-            </div>
-
-            {/* Client summary header cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-lg">
-              <div className="text-right text-xs">
-                <div className="font-bold text-slate-400">{isAr ? "اسم العميل التجاري" : "Commercial Customer"}</div>
-                <div className="font-black text-slate-800 text-base mt-1">{selectedCustomerObj?.nameAr}</div>
-                <div className="text-slate-500 mt-1">{selectedCustomerObj?.phone} | {selectedCustomerObj?.address}</div>
-              </div>
-
-              <div className="text-left font-mono text-xs flex flex-col justify-center">
-                <div className="font-bold text-slate-400 text-right sm:text-left">{isAr ? "الرصيد المستحق الحالي" : "Current Outstanding Debt"}</div>
-                <div className="font-extrabold text-rose-600 text-lg mt-1 text-right sm:text-left">
-                  SAR {selectedCustomerObj?.balance?.toLocaleString()}
-                </div>
-              </div>
-            </div>
-
-            {/* Table list of client movements */}
+          {clientMovements.length === 0 ? (
+            <EmptyState
+              title="لا توجد حركات مالية مسجلة لهذا العميل"
+              titleEn="No Transactions Found"
+              description="لم يتم تسجيل أي فواتير بيع أو سندات تحصيل على هذا الحساب حتى الآن."
+              descriptionEn="No transactions have been recorded for this customer yet."
+              icon={FileText}
+              language={language}
+            />
+          ) : (
             <ERPTable
               data={clientMovements}
               columns={movementColumns}
+              searchKeys={["reference", "notes", "type"]}
               language={language}
+              title={isAr ? "الحركات والقيود المالية المباشرة" : "Client Direct Movements"}
             />
-          </div>
+          )}
         </div>
       )}
 
-      {/* Debtors List with Limits */}
+      {/* TAB 3: DEBTS ONLY */}
       {activeTab === "debts" && (
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
-          <ERPTable
-            data={customers.filter(c => (c.balance || 0) > 0)}
-            columns={[
-              { key: "id", header: "رمز العميل", headerEn: "ID" },
-              { key: "nameAr", header: "العميل المدين", headerEn: "Customer" },
-              { 
-                key: "balance", 
-                header: "المديونية (ريال)", 
-                headerEn: "Debt", 
-                render: (val) => <span className="font-mono font-black text-rose-600">SAR {Number(val).toLocaleString()}</span> 
-              },
-              { 
-                key: "creditLimit", 
-                header: "الحد الائتماني المقترح", 
-                headerEn: "Limit", 
-                render: () => <span className="text-slate-500">SAR 50,000</span> 
-              },
-              { 
-                key: "status", 
-                header: "حالة الائتمان", 
-                headerEn: "Status", 
-                render: (_, row) => (
-                  <span className={`text-xs font-bold ${row.balance > 40000 ? "text-rose-600 font-extrabold" : "text-amber-600"}`}>
-                    {row.balance > 40000 ? "⚠️ حرج - قارب الحد" : "نشط ومستقر"}
-                  </span>
-                ) 
-              }
-            ]}
-            language={language}
-          />
-        </div>
+        <ERPTable
+          data={customers.filter(c => (c.balance || 0) > 0)}
+          columns={directoryColumns}
+          searchKeys={["nameAr", "phone"]}
+          language={language}
+          title={isAr ? "العملاء الذين عليهم مديونيات مستحقة فقط" : "Indebted Clients Only"}
+        />
       )}
 
-      {/* Historic Movements of customers */}
+      {/* TAB 4: ALL MOVEMENTS */}
       {activeTab === "movements" && (
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
-          <ERPTable
-            data={customerMovements}
-            columns={[
-              { key: "date", header: "التاريخ", headerEn: "Date" },
-              { 
-                key: "customerId", 
-                header: "العميل", 
-                headerEn: "Customer", 
-                render: (val) => customers.find(c => c.id === val)?.nameAr || val 
-              },
-              { key: "type", header: "نوع الحركة", headerEn: "Type" },
-              { key: "reference", header: "رقم المرجع", headerEn: "Ref" },
-              { key: "notes", header: "تفاصيل العملية", headerEn: "Details" },
-              { 
-                key: "amount", 
-                header: "المبلغ", 
-                headerEn: "Amount", 
-                render: (val) => <span className="font-mono font-bold">SAR {Number(val).toLocaleString()}</span> 
-              }
-            ]}
-            language={language}
-          />
-        </div>
+        <ERPTable
+          data={customerMovements}
+          columns={movementColumns}
+          searchKeys={["reference", "notes", "type", "customerId"]}
+          language={language}
+          title={isAr ? "سجل جميع حركات ذمم العملاء" : "All Client Movements"}
+        />
       )}
+
+      {/* Confirm Delete Dialog */}
+      <ConfirmDialog
+        isOpen={Boolean(customerToDelete)}
+        onClose={() => setCustomerToDelete(null)}
+        onConfirm={confirmDelete}
+        title="حذف سجل العميل؟"
+        titleEn="Delete Customer Record?"
+        description="هل أنت متأكد من رغبتك في حذف هذا العميل وسجل ذمته؟"
+        descriptionEn="Are you sure you want to delete this customer record?"
+        itemName={customerToDelete?.nameAr}
+        confirmLabel="تأكيد الحذف"
+        confirmLabelEn="Delete"
+        variant="destructive"
+        language={language}
+      />
     </div>
   );
 }

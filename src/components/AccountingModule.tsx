@@ -8,6 +8,10 @@ import {
   DollarSign, FileSpreadsheet, Building2, Globe, Settings, Scale, AlertCircle, Trash2, ArrowLeft, Send
 } from "lucide-react";
 import ERPTable, { ColumnDef } from "./common/ERPTable";
+import PageHeader from "./common/PageHeader";
+import StatusBadge from "./common/StatusBadge";
+import FormSection from "./common/FormSection";
+import FormField from "./common/FormField";
 
 interface AccountingModuleProps {
   language?: "ar" | "en";
@@ -400,70 +404,95 @@ export default function AccountingModule({ language = "ar" }: AccountingModulePr
   return (
     <div className="space-y-6 text-right" id="novaro-accounting">
       
-      {/* Module Title */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 pb-5">
-        <div>
-          <span className="text-xs uppercase font-bold text-slate-400 tracking-widest font-mono block">
-            {isAr ? "نظام الرقابة المالية والأستاذ العام للمؤسسات" : "FINANCIAL CORE ENGINE"}
-          </span>
-          <h1 className="text-2xl font-black text-slate-900 flex items-center gap-2 justify-end">
-            <BookOpen className="w-6 h-6 text-teal-700" />
-            {isAr ? "نظام الأستاذ العام والعملات المتعددة" : "Double-Entry Bookkeeping"}
-          </h1>
-        </div>
+      {/* Standardized Page Header */}
+      <PageHeader
+        title="دفتر الأستاذ العام والقيود المزدوجة"
+        titleEn="General Ledger & Double-Entry Bookkeeping"
+        description="إدارة شجرة الحسابات، قيود اليومية، رقابة الترحيل، أسعار الصرف، والإقفال السنوي."
+        descriptionEn="Chart of accounts, journal vouchers, workflow controls, and year-end closing."
+        icon={BookOpen}
+        breadcrumbs={[
+          { label: "المحاسبة والمالية", labelEn: "Accounting & Finance" },
+          { 
+            label: activeSubTab === "coa" ? "شجرة الحسابات" :
+                   activeSubTab === "je" ? "منشئ القيود" :
+                   activeSubTab === "workflow" ? "رقابة القيود والترحيل" :
+                   activeSubTab === "recurring" ? "القيود الدورية" :
+                   activeSubTab === "exchange" ? "أسعار الصرف" :
+                   activeSubTab === "closing" ? "إقفال السنة المالية" :
+                   activeSubTab === "cash_banks" ? "الخزينة والتحويلات" : "إعدادات الشركة",
+            labelEn: activeSubTab === "coa" ? "Chart of Accounts" :
+                     activeSubTab === "je" ? "Journal Vouchers" :
+                     activeSubTab === "workflow" ? "Workflow Control" :
+                     activeSubTab === "recurring" ? "Recurring Templates" :
+                     activeSubTab === "exchange" ? "Exchange Rates" :
+                     activeSubTab === "closing" ? "Year End Closing" :
+                     activeSubTab === "cash_banks" ? "Cash & Banks" : "Company Settings",
+            active: true 
+          }
+        ]}
+        language={language}
+      />
 
-        {/* Responsive subtabs list */}
-        <div className="flex flex-wrap gap-1 p-1 bg-slate-100 rounded-lg text-[11px] font-bold">
-          <button
-            onClick={() => setActiveSubTab("coa")}
-            className={`px-3 py-1.5 rounded-md transition ${activeSubTab === "coa" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
-          >
-            {isAr ? "شجرة الحسابات" : "Chart of Accounts"}
-          </button>
-          <button
-            onClick={() => setActiveSubTab("je")}
-            className={`px-3 py-1.5 rounded-md transition ${activeSubTab === "je" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
-          >
-            {isAr ? "منشئ القيود" : "Journal Vouchers"}
-          </button>
-          <button
-            onClick={() => setActiveSubTab("workflow")}
-            className={`px-3 py-1.5 rounded-md transition ${activeSubTab === "workflow" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
-          >
-            {isAr ? "رقابة القيود والترحيل" : "Workflow Control"}
-          </button>
-          <button
-            onClick={() => setActiveSubTab("recurring")}
-            className={`px-3 py-1.5 rounded-md transition ${activeSubTab === "recurring" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
-          >
-            {isAr ? "القيود الدورية" : "Recurring Templates"}
-          </button>
-          <button
-            onClick={() => setActiveSubTab("exchange")}
-            className={`px-3 py-1.5 rounded-md transition ${activeSubTab === "exchange" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
-          >
-            {isAr ? "أسعار الصرف" : "Exchange Rates"}
-          </button>
-          <button
-            onClick={() => setActiveSubTab("closing")}
-            className={`px-3 py-1.5 rounded-md transition ${activeSubTab === "closing" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
-          >
-            {isAr ? "إقفال السنة المالية" : "Year End Closing"}
-          </button>
-          <button
-            onClick={() => setActiveSubTab("cash_banks")}
-            className={`px-3 py-1.5 rounded-md transition ${activeSubTab === "cash_banks" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
-          >
-            {isAr ? "الخزينة والتحويلات" : "Cash & Banks"}
-          </button>
-          <button
-            onClick={() => setActiveSubTab("settings")}
-            className={`px-3 py-1.5 rounded-md transition ${activeSubTab === "settings" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
-          >
-            <Settings className="w-3.5 h-3.5 inline mr-1" />
-            {isAr ? "إعدادات الشركة" : "Settings"}
-          </button>
-        </div>
+      {/* Standardized Secondary Navigation Tabs */}
+      <div className="flex items-center gap-1.5 p-1 bg-slate-100/90 rounded-xl border border-slate-200/80 overflow-x-auto text-xs font-bold">
+        <button
+          type="button"
+          onClick={() => setActiveSubTab("coa")}
+          className={`px-3.5 py-1.5 rounded-lg transition-all ${activeSubTab === "coa" ? "bg-white text-slate-900 shadow-xs border border-slate-200/60" : "text-slate-500 hover:text-slate-800"}`}
+        >
+          {isAr ? "شجرة الحسابات" : "Chart of Accounts"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveSubTab("je")}
+          className={`px-3.5 py-1.5 rounded-lg transition-all ${activeSubTab === "je" ? "bg-white text-slate-900 shadow-xs border border-slate-200/60" : "text-slate-500 hover:text-slate-800"}`}
+        >
+          {isAr ? "منشئ القيود" : "Journal Vouchers"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveSubTab("workflow")}
+          className={`px-3.5 py-1.5 rounded-lg transition-all ${activeSubTab === "workflow" ? "bg-white text-slate-900 shadow-xs border border-slate-200/60" : "text-slate-500 hover:text-slate-800"}`}
+        >
+          {isAr ? "رقابة القيود والترحيل" : "Workflow Control"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveSubTab("recurring")}
+          className={`px-3.5 py-1.5 rounded-lg transition-all ${activeSubTab === "recurring" ? "bg-white text-slate-900 shadow-xs border border-slate-200/60" : "text-slate-500 hover:text-slate-800"}`}
+        >
+          {isAr ? "القيود الدورية" : "Recurring Templates"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveSubTab("exchange")}
+          className={`px-3.5 py-1.5 rounded-lg transition-all ${activeSubTab === "exchange" ? "bg-white text-slate-900 shadow-xs border border-slate-200/60" : "text-slate-500 hover:text-slate-800"}`}
+        >
+          {isAr ? "أسعار الصرف" : "Exchange Rates"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveSubTab("closing")}
+          className={`px-3.5 py-1.5 rounded-lg transition-all ${activeSubTab === "closing" ? "bg-white text-slate-900 shadow-xs border border-slate-200/60" : "text-slate-500 hover:text-slate-800"}`}
+        >
+          {isAr ? "إقفال السنة المالية" : "Year End Closing"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveSubTab("cash_banks")}
+          className={`px-3.5 py-1.5 rounded-lg transition-all ${activeSubTab === "cash_banks" ? "bg-white text-slate-900 shadow-xs border border-slate-200/60" : "text-slate-500 hover:text-slate-800"}`}
+        >
+          {isAr ? "الخزينة والتحويلات" : "Cash & Banks"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveSubTab("settings")}
+          className={`px-3.5 py-1.5 rounded-lg transition-all ${activeSubTab === "settings" ? "bg-white text-slate-900 shadow-xs border border-slate-200/60" : "text-slate-500 hover:text-slate-800"}`}
+        >
+          <Settings className="w-3.5 h-3.5 inline mr-1" />
+          {isAr ? "إعدادات الشركة" : "Settings"}
+        </button>
       </div>
 
       {/* 1. CHART OF ACCOUNTS (IFRS Tree) */}

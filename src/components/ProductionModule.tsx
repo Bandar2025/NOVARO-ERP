@@ -6,6 +6,7 @@ import {
   Settings, Layers, RefreshCw, AlertTriangle, Coffee, Hammer, X, Plus, Sparkles, Printer
 } from "lucide-react";
 import ERPTable, { ColumnDef } from "./common/ERPTable";
+import PageHeader from "./common/PageHeader";
 
 interface ProductionModuleProps {
   language?: "ar" | "en";
@@ -271,44 +272,58 @@ export default function ProductionModule({ language = "ar" }: ProductionModulePr
   return (
     <div className="space-y-6">
       
-      {/* Tab bar header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 pb-5">
-        <div>
-          <span className="text-xs uppercase font-bold text-slate-400 tracking-widest font-mono">
-            {isAr ? "صالة تشغيل المصنع ومراكز الإنتاج" : "MANUFACTURING PRODUCTION LINE CONTROLS"}
-          </span>
-          <h1 className="text-2xl font-black text-slate-900 flex items-center gap-2">
-            <Cpu className="w-6 h-6 text-amber-700" />
-            {isAr ? "صالة الإنتاج والتحميص الآلي" : "Roasting & Packaging floor"}
-          </h1>
-        </div>
+      {/* Standardized Page Header */}
+      <PageHeader
+        title="صالة الإنتاج وخطوط التصنيع والتعبئة"
+        titleEn="Manufacturing & Packaging Operations"
+        description="إدارة معايير الخلطات (BOM)، محاكاة التحميص، مطحنة البن الصناعية، وخط التعبئة والتغليف."
+        descriptionEn="Recipe formulas (BOM), rotary roasting simulation, industrial grinding mills, and automatic packaging conveyors."
+        icon={Cpu}
+        breadcrumbs={[
+          { label: "الإنتاج والتصنيع", labelEn: "Manufacturing & Production" },
+          { 
+            label: activeSubTab === "recipes" ? "معايير الخلطات والوصفات" :
+                   activeSubTab === "roasting" ? "محمصة البن التوربينية" :
+                   activeSubTab === "grinding" ? "طاحونة الحبوب الصناعية" : "خط التعبئة والتغليف",
+            labelEn: activeSubTab === "recipes" ? "Recipe Formulas" :
+                     activeSubTab === "roasting" ? "Roasting Kiln" :
+                     activeSubTab === "grinding" ? "Grinding Mill" : "Packaging Line",
+            active: true 
+          }
+        ]}
+        language={language}
+      />
 
-        <div className="flex gap-1 p-1 bg-slate-100 rounded-lg border border-slate-200 self-start md:self-center">
-          <button
-            onClick={() => setActiveSubTab("recipes")}
-            className={`px-3 py-1.5 text-xs font-bold rounded-md transition ${activeSubTab === "recipes" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
-          >
-            {isAr ? "معايير الخلطات والوصفات" : "Recipe Formulas"}
-          </button>
-          <button
-            onClick={() => setActiveSubTab("roasting")}
-            className={`px-3 py-1.5 text-xs font-bold rounded-md transition ${activeSubTab === "roasting" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
-          >
-            {isAr ? "محمصة البن التوربينية" : "Roasting Kiln"}
-          </button>
-          <button
-            onClick={() => setActiveSubTab("grinding")}
-            className={`px-3 py-1.5 text-xs font-bold rounded-md transition ${activeSubTab === "grinding" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
-          >
-            {isAr ? "طاحونة الحبوب الصناعية" : "Grinding Mill"}
-          </button>
-          <button
-            onClick={() => setActiveSubTab("packaging")}
-            className={`px-3 py-1.5 text-xs font-bold rounded-md transition ${activeSubTab === "packaging" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
-          >
-            {isAr ? "خط التعبئة والتغليف" : "Packaging Line"}
-          </button>
-        </div>
+      {/* Standardized Secondary Navigation Tabs */}
+      <div className="flex items-center gap-1.5 p-1 bg-slate-100/90 rounded-xl border border-slate-200/80 overflow-x-auto text-xs font-bold">
+        <button
+          type="button"
+          onClick={() => setActiveSubTab("recipes")}
+          className={`px-3.5 py-2 rounded-lg transition-all ${activeSubTab === "recipes" ? "bg-white text-slate-900 shadow-xs border border-slate-200/60" : "text-slate-500 hover:text-slate-800"}`}
+        >
+          {isAr ? "معايير الخلطات والوصفات" : "Recipe Formulas"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveSubTab("roasting")}
+          className={`px-3.5 py-2 rounded-lg transition-all ${activeSubTab === "roasting" ? "bg-white text-slate-900 shadow-xs border border-slate-200/60" : "text-slate-500 hover:text-slate-800"}`}
+        >
+          {isAr ? "محمصة البن التوربينية" : "Roasting Kiln"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveSubTab("grinding")}
+          className={`px-3.5 py-2 rounded-lg transition-all ${activeSubTab === "grinding" ? "bg-white text-slate-900 shadow-xs border border-slate-200/60" : "text-slate-500 hover:text-slate-800"}`}
+        >
+          {isAr ? "طاحونة الحبوب الصناعية" : "Grinding Mill"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveSubTab("packaging")}
+          className={`px-3.5 py-2 rounded-lg transition-all ${activeSubTab === "packaging" ? "bg-white text-slate-900 shadow-xs border border-slate-200/60" : "text-slate-500 hover:text-slate-800"}`}
+        >
+          {isAr ? "خط التعبئة والتغليف" : "Packaging Line"}
+        </button>
       </div>
 
       {/* 1. Recipe Formulas Tab */}

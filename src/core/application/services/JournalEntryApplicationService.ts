@@ -35,10 +35,10 @@ export class JournalEntryApplicationService {
 
     const draftEntry: Omit<JournalEntry, "id"> = {
       date: dto.date || new Date().toISOString().split("T")[0],
-      reference: dto.reference || `JE-MANUAL-${Date.now()}`,
+      reference: dto.reference || `JE-MANUAL-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
       notes: dto.notes || "Draft Manual Journal Entry",
       items: dto.items.map((it, idx) => ({
-        id: `line-${Date.now()}-${idx}`,
+        id: `line-${Date.now()}-${idx}-${Math.floor(100 + Math.random() * 900)}`,
         accountId: it.accountId,
         accountName: accountMap.get(it.accountId)?.name || it.description || it.accountId,
         debit: Number(it.debit || 0),
@@ -65,7 +65,7 @@ export class JournalEntryApplicationService {
     }
 
     const fullEntry: JournalEntry = {
-      id: `je-${Date.now()}`,
+      id: `je-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
       ...draftEntry
     };
 

@@ -2,6 +2,9 @@ import React, { useState } from "react";
 import { useAppState } from "../context/StateContext";
 import { ShoppingCart, TrendingUp, DollarSign, Calendar, Truck, UserCheck, Plus, Trash2, Printer, CheckCircle } from "lucide-react";
 import ERPTable, { ColumnDef } from "./common/ERPTable";
+import PageHeader from "./common/PageHeader";
+import StatusBadge from "./common/StatusBadge";
+import EmptyState from "./common/EmptyState";
 
 interface WholesaleModuleProps {
   language?: "ar" | "en";
@@ -178,44 +181,54 @@ export default function WholesaleModule({ language = "ar" }: WholesaleModuleProp
 
   return (
     <div className="space-y-6">
-      {/* Title */}
-      <div className="border-b border-slate-200 pb-5">
-        <span className="text-xs uppercase font-bold text-amber-600 tracking-wider font-mono">
-          {isAr ? "قسم كبار العملاء والتوزيع والتوريد للجملة" : "B2B WHOLESALE & CORPORATE TRADE STATION"}
-        </span>
-        <h1 className="text-3xl font-black text-slate-900 flex items-center gap-3">
-          <Truck className="w-8 h-8 text-teal-700" />
-          {isAr ? "مبيعات الجملة" : "Wholesale Department"}
-        </h1>
-      </div>
+      {/* Standardized Page Header */}
+      <PageHeader
+        title="مبيعات الجملة والتوزيع التجاري"
+        titleEn="B2B Wholesale & Distribution"
+        description="إصدار فواتير الجملة، حساب هوامش الأرباح التقديرية، وتوجيه الشحنات مع السائقين."
+        descriptionEn="Manage corporate client wholesale billing, profit margins, and distribution tracking."
+        icon={Truck}
+        breadcrumbs={[
+          { label: "المبيعات والعملاء", labelEn: "Sales & CRM" },
+          { 
+            label: activeTab === "billing" ? "فاتورة جملة جديدة" : activeTab === "margins" ? "تحليل هوامش الأرباح" : "سجل الفواتير",
+            labelEn: activeTab === "billing" ? "Bulk Invoicing" : activeTab === "margins" ? "Margin Analysis" : "Invoices Log",
+            active: true 
+          }
+        ]}
+        language={language}
+      />
 
-      {/* Touch Subnavigation */}
-      <div className="grid grid-cols-3 gap-3 bg-slate-100 p-2 rounded-2xl">
+      {/* Secondary Navigation Tabs */}
+      <div className="flex items-center gap-1.5 p-1 bg-slate-100/90 rounded-xl border border-slate-200/80 overflow-x-auto text-xs font-bold">
         <button
+          type="button"
           onClick={() => setActiveTab("billing")}
-          className={`py-3.5 rounded-xl font-bold text-sm transition ${
-            activeTab === "billing" ? "bg-teal-700 text-white shadow-xs" : "bg-white text-slate-600 hover:bg-slate-50"
+          className={`px-4 py-2 rounded-lg transition-all ${
+            activeTab === "billing" ? "bg-white text-slate-900 shadow-xs border border-slate-200/60" : "text-slate-500 hover:text-slate-800"
           }`}
         >
           {isAr ? "فاتورة جملة جديدة" : "New Bulk Invoicing"}
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveTab("margins")}
-          className={`py-3.5 rounded-xl font-bold text-sm transition ${
-            activeTab === "margins" ? "bg-teal-700 text-white shadow-xs" : "bg-white text-slate-600 hover:bg-slate-50"
+          className={`px-4 py-2 rounded-lg transition-all ${
+            activeTab === "margins" ? "bg-white text-slate-900 shadow-xs border border-slate-200/60" : "text-slate-500 hover:text-slate-800"
           }`}
         >
-          {isAr ? "أرباح مبيعات الجملة" : "Wholesale Profitability"}
+          {isAr ? "تحليل هوامش وأرباح الجملة" : "Wholesale Profitability"}
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveTab("log")}
-          className={`py-3.5 rounded-xl font-bold text-sm transition ${
-            activeTab === "log" ? "bg-teal-700 text-white shadow-xs" : "bg-white text-slate-600 hover:bg-slate-50"
+          className={`px-4 py-2 rounded-lg transition-all ${
+            activeTab === "log" ? "bg-white text-slate-900 shadow-xs border border-slate-200/60" : "text-slate-500 hover:text-slate-800"
           }`}
         >
-          {isAr ? "سجل فواتير الجملة" : "Wholesale Invoice Logs"}
+          {isAr ? "سجل فواتير مبيعات الجملة" : "Wholesale Invoices Log"}
         </button>
       </div>
 
