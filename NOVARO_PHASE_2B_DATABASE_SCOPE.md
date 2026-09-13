@@ -1,6 +1,6 @@
 # NOVARO ERP — Phase 2B Database Migration Scope & Boundaries
 **Document Ref:** `NOVARO_PHASE_2B_DATABASE_SCOPE.md`  
-**Phase:** 2A.6-R — Database Contract Corrections & Final Pre-PostgreSQL Gate  
+**Phase:** 2A.6-R.1 — Final Database Contract Integrity Check (Pre-PostgreSQL Final Gate)  
 
 ---
 
@@ -8,7 +8,7 @@
 
 The primary goal of Phase 2B is to migrate NOVARO ERP from local storage/in-memory state to a production-grade PostgreSQL database with Drizzle ORM.
 
-### Core Entities Included in Phase 2B (28 Entities In-Scope):
+### Core Entities Included in Phase 2B (29 Entities In-Scope):
 1. `tenants`: Tenant account structure.
 2. `companies`: Company legal entities.
 3. `branches`: Branch locations.
@@ -35,19 +35,19 @@ The primary goal of Phase 2B is to migrate NOVARO ERP from local storage/in-memo
 24. `pos_sessions`: POS shift sessions.
 25. `cashbox_transactions`: Cash safe vouchers.
 26. `recipes`: Production BOM formula header.
-27. `users`: System user credentials.
-28. `audit_logs`: Security and mutation audit log.
+27. `recipe_materials`: BOM raw material composition lines.
+28. `users`: System user credentials.
+29. `audit_logs`: Security and mutation audit log.
 
 ---
 
-## 2. OUT OF SCOPE & DEFERRED ENTITIES (4 Entities)
+## 2. OUT OF SCOPE & DEFERRED ENTITIES (3 Entities)
 
 The following entities and modules are deferred to future phases to keep Phase 2B lean, stable, and focused on core ERP persistence:
 
 | Deferred Entity / Capability | Targeted Phase | Rationale for Deferral |
 | :--- | :---: | :--- |
 | `cost_centers` | Phase 3 | Advanced cost-center allocation hierarchy. |
-| `recipe_materials` | Phase 3 | Child material composition records for BOM recipes. |
 | `roasting_jobs` & `grinding_jobs` | Phase 3 | Specialized coffee industry extension logs. |
 | Fixed Assets (`fixed_assets`, `depreciation`) | Phase 5 | Requires full asset accounting engine development. |
 | Bank Reconciliation (`bank_reconciliations`) | Phase 5 | Requires MT940 statement parser integration. |
@@ -56,14 +56,14 @@ The following entities and modules are deferred to future phases to keep Phase 2
 | HR & Employee Payroll | Phase 8 | Separate HR & Payroll domain module. |
 | ZATCA Phase 2 Clearance Credentials | Phase 5 | External API clearance integration. |
 
-- **Total Reviewed Entities**: 28 In-Scope + 4 Deferred = **32 Reviewed Entities**.
+- **Total Reviewed Entities**: 29 In-Scope + 3 Deferred = **32 Reviewed Entities**.
 
 ---
 
 ## 3. BLOCKERS, DEPENDENCIES & PRE-REQUISITES
 
 ### Blockers:
-- **NONE**. The completion of Phase 2A.6-R clears all pre-PostgreSQL blockers.
+- **NONE**. The completion of Phase 2A.6-R.1 clears all pre-PostgreSQL blockers.
 
 ### Dependencies & Pre-Requisites for Phase 2B:
 1. **Drizzle ORM Package Installation**: Add `drizzle-orm`, `drizzle-kit`, and `pg` to `package.json`.

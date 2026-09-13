@@ -1,13 +1,13 @@
 # NOVARO ERP — Database Contract Master Matrix
 **Document Ref:** `NOVARO_DATABASE_CONTRACT_MATRIX.md`  
-**Phase:** 2A.6-R — Database Contract Corrections & Final Pre-PostgreSQL Gate  
+**Phase:** 2A.6-R.1 — Final Database Contract Integrity Check (Pre-PostgreSQL Final Gate)  
 
 ---
 
 ## Complete Entity Contract Matrix (32 Entities Reviewed)
 
-- **Phase 2B Core Entities In-Scope**: 28 Entities
-- **Deferred / Optional Extension Entities**: 4 Entities (`cost_centers`, `recipe_materials`, `roasting_jobs`, `grinding_jobs`)
+- **Phase 2B Core Entities In-Scope**: 29 Entities (including `recipes` BOM Header and `recipe_materials` BOM Material Lines)
+- **Deferred / Extension Entities**: 3 Entities (`cost_centers`, `roasting_jobs`, `grinding_jobs`)
 - **Total Reviewed Entities**: 32 Entities
 
 | # | Entity Name | Classification | Owner Domain | tenant_id | company_id | branch_id | Official Source of Truth | Mutable | Delete Policy | Audit Log | Target Phase |
@@ -38,10 +38,10 @@
 | 24 | `pos_sessions` | TRANSACTION | Point of Sale | **YES** | **YES** | **YES** | Cashier Shift Open/Close Log | NO (if Closed) | Immutable | YES | Phase 2B |
 | 25 | `cashbox_transactions`| TRANSACTION | Treasury | **YES** | **YES** | **YES** | Safe Inflow/Outflow Vouchers | NO (if Posted) | Immutable | YES | Phase 2B |
 | 26 | `recipes` | MASTER | Manufacturing | **YES** | **YES** | Optional | Production BOM Formula Header | YES | Soft Delete | YES | Phase 2B |
-| 27 | `users` | CONFIGURATION | Admin / Core | **YES** | Optional | Optional | User Security Credentials | YES | Soft Delete | YES | Phase 2B |
-| 28 | `audit_logs` | AUDIT | Admin / Core | **YES** | **YES** | **YES** | Enterprise Security & Audit Log | NO | Immutable | Append-Only| Phase 2B |
-| 29 | `cost_centers` | CONFIGURATION | Accounting | **YES** | **YES** | **YES** | Cost Center Hierarchy Tree | YES | Soft Delete | YES | Deferred |
-| 30 | `recipe_materials` | MASTER | Manufacturing | **YES** | **YES** | Optional | BOM Raw Material Composition | YES | Cascade | YES | Deferred |
+| 27 | `recipe_materials` | MASTER | Manufacturing | **YES** | **YES** | Optional | BOM Raw Material Composition | YES | Cascade | YES | Phase 2B |
+| 28 | `users` | CONFIGURATION | Admin / Core | **YES** | Optional | Optional | User Security Credentials | YES | Soft Delete | YES | Phase 2B |
+| 29 | `audit_logs` | AUDIT | Admin / Core | **YES** | **YES** | **YES** | Enterprise Security & Audit Log | NO | Immutable | Append-Only| Phase 2B |
+| 30 | `cost_centers` | CONFIGURATION | Accounting | **YES** | **YES** | **YES** | Cost Center Hierarchy Tree | YES | Soft Delete | YES | Deferred |
 | 31 | `roasting_jobs` | TRANSACTION | Industry Ext. | **YES** | **YES** | **YES** | Coffee Kiln Batch Execution Log | NO (if Posted) | Immutable | YES | Deferred |
 | 32 | `grinding_jobs` | TRANSACTION | Industry Ext. | **YES** | **YES** | **YES** | Milling Execution Log | NO (if Posted) | Immutable | YES | Deferred |
 

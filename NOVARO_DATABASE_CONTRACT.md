@@ -1,7 +1,7 @@
 # NOVARO ERP — Enterprise Database Architecture Contract
 **Document Ref:** `NOVARO_DATABASE_CONTRACT.md`  
-**Phase:** 2A.6-R — Database Contract Corrections & Final Pre-PostgreSQL Gate  
-**Status:** CONTRACT APPROVED & RECONCILED — PRE-POSTGRESQL GATE CLEARED  
+**Phase:** 2A.6-R.1 — Final Database Contract Integrity Check (Pre-PostgreSQL Final Gate)  
+**Status:** CONTRACT APPROVED & INTERNALLY CONSISTENT — PRE-POSTGRESQL FINAL GATE CLEARED  
 **Target Persistence:** PostgreSQL 16+ / Drizzle ORM  
 
 ---
@@ -42,7 +42,7 @@ PostgreSQL Relational Database
 
 Every entity in the NOVARO ERP database contract is classified into one of eight functional categories:
 
-- **MASTER**: Foundational business entities (e.g., `Account`, `Customer`, `Supplier`, `Item`, `Warehouse`).
+- **MASTER**: Foundational business entities (e.g., `Account`, `Customer`, `Supplier`, `Item`, `Warehouse`, `Recipe`, `RecipeMaterial`).
 - **TRANSACTION**: Operational business headers (e.g., `SalesInvoice`, `PurchaseOrder`, `InventoryAdjustment`).
 - **FINANCIAL LEDGER**: Authoritative double-entry financial records (`JournalEntry`, `JournalEntryItem`).
 - **INVENTORY LEDGER**: Authoritative stock movement & valuation layers (`CostLayer`, `StockMovement`).
@@ -53,12 +53,12 @@ Every entity in the NOVARO ERP database contract is classified into one of eight
 
 ---
 
-## 3. Review & Reconciliation of the 32 Reviewed Entities
+## 3. Reconciliation of Reviewed Entities (32 Total Entities)
 
 All 32 entities from the Phase 2A.5 Blueprint have been reviewed and reconciled:
-- **Phase 2B Core Entities In-Scope**: **28 Entities**
-- **Deferred / Optional Extension Entities**: **4 Entities** (`cost_centers`, `recipe_materials`, `roasting_jobs`, `grinding_jobs`)
-- **Total Reviewed Entities**: **32 Entities**
+- **Phase 2B Core Entities In-Scope**: **29 Entities** (including `recipes` BOM Header and `recipe_materials` BOM Material Lines combined as the BOM Master Data model).
+- **Deferred Extension Entities**: **3 Entities** (`cost_centers`, `roasting_jobs`, `grinding_jobs`).
+- **Total Reviewed Entities**: **32 Entities**.
 
 | # | Entity Name | Phase 2B Classification | Justification & Domain Code Alignment |
 | :--- | :--- | :---: | :--- |
@@ -87,13 +87,13 @@ All 32 entities from the Phase 2A.5 Blueprint have been reviewed and reconciled:
 | 23 | `purchase_order_items` | **REQUIRED FOR PHASE 2B** | Procurement line items (`PurchaseOrderItem`). |
 | 24 | `pos_sessions` | **REQUIRED FOR PHASE 2B** | Cashier shift session (`POSSession`). |
 | 25 | `cashbox_transactions` | **REQUIRED FOR PHASE 2B** | Cash safe vouchers (`CashboxTransaction`). |
-| 26 | `recipes` | **REQUIRED FOR PHASE 2B** | BOM Recipe header (`Recipe`). |
-| 27 | `users` | **REQUIRED FOR PHASE 2B** | User identity & authentication (`User`). |
-| 28 | `audit_logs` | **REQUIRED FOR PHASE 2B** | Security & change tracking (`AuditLog`). |
-| 29 | `cost_centers` | **DEFERRED / EXTENSION** | Advanced cost center accounting hierarchy. |
-| 30 | `recipe_materials` | **DEFERRED / EXTENSION** | Child relation for BOM raw material lines. |
-| 31 | `roasting_jobs` | **DEFERRED / EXTENSION** | Coffee Industry Extension batch log. |
-| 32 | `grinding_jobs` | **DEFERRED / EXTENSION** | Coffee Industry Extension milling log. |
+| 26 | `recipes` | **REQUIRED FOR PHASE 2B** | Production BOM Recipe header (`Recipe`). |
+| 27 | `recipe_materials` | **REQUIRED FOR PHASE 2B** | BOM Raw Material composition lines. |
+| 28 | `users` | **REQUIRED FOR PHASE 2B** | User identity & authentication (`User`). |
+| 29 | `audit_logs` | **REQUIRED FOR PHASE 2B** | Security & change tracking (`AuditLog`). |
+| 30 | `cost_centers` | **DEFERRED EXTENSION** | Advanced cost center accounting hierarchy. |
+| 31 | `roasting_jobs` | **DEFERRED EXTENSION** | Coffee Industry Extension batch log. |
+| 32 | `grinding_jobs` | **DEFERRED EXTENSION** | Coffee Industry Extension milling log. |
 
 ---
 
@@ -112,7 +112,7 @@ Branch (branch_id)
 | Entity Category | `tenant_id` | `company_id` | `branch_id` | Scope Rationale |
 | :--- | :---: | :---: | :---: | :--- |
 | **System & Admin** (`tenants`, `users`) | **YES** | Optional | Optional | Users belong to a Tenant; can be assigned to Companies/Branches. |
-| **Master Data** (`accounts`, `customers`, `suppliers`, `items`) | **YES** | **YES** | Optional | Shared across branches within the same legal Company. |
+| **Master Data** (`accounts`, `customers`, `suppliers`, `items`, `recipes`) | **YES** | **YES** | Optional | Shared across branches within the same legal Company. |
 | **Branch Master** (`warehouses`, `cashboxes`) | **YES** | **YES** | **YES** | Physically tied to a specific operational Branch. |
 | **Transactions & Ledgers** (`journal_entries`, `sales_invoices`, `stock_movements`) | **YES** | **YES** | **YES** | Fully scoped to the issuing Branch, Company, and Tenant. |
 | **Reference Data** (`exchange_rates`, `tax_codes`) | **YES** | **YES** | Optional | Company-wide reference tables. |
@@ -121,7 +121,7 @@ Branch (branch_id)
 
 ## 5. Source of Truth & Derived Data Governance
 
-To eliminate contradictions, the contract establishes strict Source of Truth rules and Reconciliation Invariants:
+To eliminate ambiguities, the contract establishes strict Source of Truth rules and Reconciliation Invariants:
 
 1. **Account Balances**:
    - **Source of Truth**: Sum of debits and credits from posted `journal_entry_items` in closed/open fiscal periods.
@@ -144,13 +144,17 @@ To eliminate contradictions, the contract establishes strict Source of Truth rul
 
 ---
 
-## 6. Document Lifecycle, Workflows & Immutability Rules
+## 6. Document Lifecycle, Workflows & Defense-in-Depth Immutability
 
 ### Financial & Stock Ledger Immutability Contract:
 1. **Lifecycle Transition**: `Draft` -> `Pending Review` -> `Approved` -> `Posted`.
-2. **Immutability Threshold**: Once a document (Journal Entry, Sales Invoice, Stock Movement) transitions to `Posted`, **UPDATE and DELETE operations are strictly forbidden in PostgreSQL**.
+2. **Immutability Threshold**: Once a document (Journal Entry, Sales Invoice, Stock Movement) transitions to `Posted`, **UPDATE and DELETE operations are strictly forbidden**.
 3. **Reversal Pattern**: Errors in posted transactions MUST be corrected by generating an offsetting Reversal Document (`reversal_of_id` foreign key referencing the original transaction).
-4. **Fiscal Period Locking**: PostgreSQL constraints and Application Services MUST reject any transaction insertion or reversal if `transaction_date` falls within a `CLOSED` or `LOCKED` `fiscal_period`.
+4. **Defense-in-Depth Layers**:
+   - **Layer 1 (Application)**: `AccountingEngine` validation rejects modifications to posted records.
+   - **Layer 2 (Repository)**: Repository implementation checks `posted == true` before executing queries and throws an error if an edit is attempted.
+   - **Layer 3 (Database Permissions)**: PostgreSQL role permissions restrict UPDATE/DELETE privileges on posted ledger tables for application database users.
+   - **Layer 4 (Audit Log)**: Any attempt to mutate records is logged to `audit_logs`.
 
 ---
 
@@ -186,9 +190,9 @@ When a Sales Invoice is posted, the following operations form a single **Atomic 
 
 ---
 
-## 8. Document Numbering Contract (GAP-017)
+## 8. Document Numbering & Sequence Precision (GAP-017)
 
-To prevent duplicate document numbers in high-concurrency environments, NOVARO ERP establishes a dedicated Document Sequence Contract:
+To prevent duplicate document numbers in high-concurrency environments, NOVARO ERP establishes a precise Document Sequence Contract:
 
 ```
 Format: {PREFIX}-{SCOPE_YEAR}-{BRANCH_CODE}-{SEQUENCE_NUMBER}
@@ -198,7 +202,8 @@ Example: INV-2026-BR1-0001
 ### Sequence Engine Specification:
 - **Scope**: Numbering is isolated per `(company_id, branch_id, document_type, fiscal_year_id)`.
 - **Reset Policy**: Sequences reset to `1` at the start of each new `fiscal_year`.
-- **Concurrency Locking (Phase 2C)**: PostgreSQL `SELECT ... FOR UPDATE` or atomic `UPDATE ... RETURNING` sequence generators ensure gapless, collision-free numbering.
+- **Phase 2B Scope**: Table structure & sequence generator definition ensuring **Uniqueness** and **Collision-Free** allocation.
+- **Phase 2C Scope**: Allocation-on-posting inside atomic transactions (`SELECT ... FOR UPDATE`) to guarantee strict **Gapless** sequence assignment for posted legal vouchers.
 
 ---
 
@@ -223,7 +228,7 @@ Example: INV-2026-BR1-0001
 
 | Entity Classification | Delete Policy | Modification Policy | Archiving / Audit Rules |
 | :--- | :--- | :--- | :--- |
-| **Master Data** (`accounts`, `items`, `customers`) | **Soft Delete** (`is_active = false` or `deleted_at`) | Allowed if no posted ledger dependencies exist. | Delete blocked if referenced in posted transactions. |
+| **Master Data** (`accounts`, `items`, `customers`, `recipes`) | **Soft Delete** (`is_active = false` or `deleted_at`) | Allowed if no posted ledger dependencies exist. | Delete blocked if referenced in posted transactions. |
 | **Draft Transactions** (`journal_entries` in Draft) | **Hard Delete** allowed | Full modification allowed. | Logged in `audit_logs` if deleted. |
 | **Posted Transactions** (`journal_entries`, `sales_invoices`) | **IMMUTABLE** (Delete strictly forbidden) | Modification strictly forbidden. | Reversal required for corrections. |
 | **Stock & Cost Layers** (`cost_layers`, `stock_movements`) | **IMMUTABLE** (Delete strictly forbidden) | Decremented via FIFO queue execution. | Historical ledger audit trail. |
@@ -235,7 +240,7 @@ Example: INV-2026-BR1-0001
 
 ```
 ON DELETE RESTRICT is enforced on all Financial & Stock references.
-ON DELETE CASCADE is restricted solely to dependent line-item children (e.g., sales_invoice_items).
+ON DELETE CASCADE is restricted solely to dependent line-item children (e.g., sales_invoice_items, recipe_materials).
 ```
 
 | Parent Entity | Parent Column | Child Entity | Child Column | Foreign Key Rule | Rationale |
@@ -244,6 +249,7 @@ ON DELETE CASCADE is restricted solely to dependent line-item children (e.g., sa
 | `accounts` | `id` | `journal_entry_items` | `account_id` | **ON DELETE RESTRICT** | Protects GL audit history. |
 | `customers` | `id` | `sales_invoices` | `customer_id` | **ON DELETE RESTRICT** | Protects customer invoice records. |
 | `items` | `id` | `cost_layers` | `item_id` | **ON DELETE RESTRICT** | Protects FIFO valuation queue. |
+| `recipes` | `id` | `recipe_materials` | `recipe_id` | **ON DELETE CASCADE** | Deleting a recipe master removes its raw material lines. |
 | `sales_invoices` | `id` | `sales_invoice_items` | `sales_invoice_id` | **ON DELETE CASCADE** | Deleting draft invoice removes its lines. |
 | `journal_entries`| `id` | `journal_entry_items` | `journal_entry_id` | **ON DELETE CASCADE** | Deleting draft voucher removes its lines. |
 
@@ -262,17 +268,17 @@ To ensure sub-10ms query execution across thousands of transactions, composite i
 
 ---
 
-## 14. Final Gate Evaluation & Approval
+## 14. Final Pre-PostgreSQL Gate Evaluation
 
 ```
 ================================================================================
-               NOVARO ERP FINAL PRE-POSTGRESQL GATE EVALUATION (2A.6-R)
+           NOVARO ERP FINAL PRE-POSTGRESQL GATE EVALUATION (2A.6-R.1)
 ================================================================================
 
-DATABASE ARCHITECTURE CONTRACT:   APPROVED & RECONCILED
+DATABASE ARCHITECTURE CONTRACT:   APPROVED & INTERNALLY CONSISTENT
 TOTAL ENTITIES REVIEWED:          32 / 32
-PHASE 2B CORE IN-SCOPE ENTITIES:  28 ENTITIES
-DEFERRED EXTENSION ENTITIES:      4 ENTITIES
+PHASE 2B CORE IN-SCOPE ENTITIES:  29 ENTITIES (INCL. RECIPES & RECIPE_MATERIALS)
+DEFERRED EXTENSION ENTITIES:      3 ENTITIES (COST_CENTERS, ROASTING, GRINDING)
 ENTITY COUNT CONSISTENCY:         100% PASSING ACROSS ALL BLUEPRINT DOCS
 
 SOURCE OF TRUTH RULES:            DEFINED (LEDGERS AUTHORITATIVE, BALANCES DERIVED)
@@ -282,13 +288,14 @@ TAX CONFIGURATION MODEL:          ENFORCED (CONFIGURATION DRIVEN, NO HARDCODING)
 
 MULTI-TENANCY & SCOPE MAP:        DEFINED (tenant_id / company_id / branch_id)
 TRANSACTION BOUNDARIES:           DEFINED (SALES, PROCUREMENT, POS)
-IMMUTABILITY & REVERSAL RULES:    DEFINED (POSTED ENTRIES IMMUTABLE)
+IMMUTABILITY & DEFENSE-IN-DEPTH:  DEFINED (POSTED ENTRIES IMMUTABLE)
+DOCUMENT NUMBERING TERMINOLOGY:   PRECISION CLARIFIED (GAPLESS ALLOCATED IN 2C)
 PHASE 2B / PHASE 2C SEPARATION:   DEFINED (2B PERSISTENCE, 2C CONCURRENCY/ACID)
 
 BUILD STATUS:                     PASSING (100% CLEAN LINT & BUILD)
 POSTGRESQL IMPLEMENTED:           NO (PRESERVED FOR PHASE 2B)
 BUSINESS LOGIC CHANGED:           NO (Clean Architecture Preserved)
 
-FINAL GATE RESULT:                APPROVED & CLEARED FOR PHASE 2B
+FINAL GATE RESULT:                APPROVED — READY FOR PHASE 2B
 ================================================================================
 ```
