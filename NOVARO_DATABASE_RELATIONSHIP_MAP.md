@@ -1,6 +1,6 @@
 # NOVARO ERP — Relational Database Hierarchy & Entity Map
 **Document Ref:** `NOVARO_DATABASE_RELATIONSHIP_MAP.md`  
-**Phase:** 2A.6 — Database Contract Review & Enterprise Data Architecture  
+**Phase:** 2A.6-R — Database Contract Corrections & Final Pre-PostgreSQL Gate  
 
 ---
 
