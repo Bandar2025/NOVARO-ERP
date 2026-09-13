@@ -14,6 +14,27 @@ import {
   initialSalesInvoices, initialPOSSessions, initialBankTransactions, initialUsers, 
   initialAuditLogs, initialBackups 
 } from "../data/novaroInitialData";
+import { AccountingEngine } from "../core/application/accounting/AccountingEngine";
+import { 
+  TrialBalanceService, 
+  TrialBalanceResult, 
+  IncomeStatementResult, 
+  BalanceSheetResult 
+} from "../core/application/accounting/TrialBalanceService";
+import { InventoryEngine } from "../core/application/inventory/InventoryEngine";
+import { CommerceService } from "../core/application/commerce/CommerceService";
+import { ManufacturingEngine } from "../core/application/manufacturing/ManufacturingEngine";
+import { 
+  PostingAccountConfiguration, 
+  defaultPostingAccountConfiguration 
+} from "../core/domain/accounting/PostingAccountConfiguration";
+import { FiscalPeriod } from "../core/domain/accounting/FiscalPeriod";
+import { CostLayer } from "../core/domain/inventory/CostLayer";
+import { DomainStockMovement } from "../core/domain/inventory/StockMovement";
+import { DomainCustomerMovement } from "../core/domain/commerce/CustomerLedger";
+import { DomainSupplierMovement } from "../core/domain/commerce/SupplierLedger";
+import { DataIntegrityChecker, DataIntegrityReport } from "../core/diagnostics/DataIntegrityChecker";
+import { runCertificationSuite, MasterCertificationReport } from "../core/certification/suite";
 
 export interface Toast {
   id: string;
@@ -55,6 +76,21 @@ interface StateContextType {
   inventoryAdjustments: InventoryAdjustment[];
   stockTransfers: StockTransfer[];
   recurringEntries: RecurringEntry[];
+
+  // Foundation Hardening & Financial Integrity
+  postingConfig: PostingAccountConfiguration;
+  setPostingConfig: React.Dispatch<React.SetStateAction<PostingAccountConfiguration>>;
+  costLayers: CostLayer[];
+  stockMovements: DomainStockMovement[];
+  fiscalPeriods: FiscalPeriod[];
+  supplierMovements: DomainSupplierMovement[];
+
+  // Ledger-derived reports & Auditing
+  getTrialBalance: (asOfDate?: string) => TrialBalanceResult;
+  getIncomeStatement: (startDate?: string, endDate?: string) => IncomeStatementResult;
+  getBalanceSheet: (asOfDate?: string) => BalanceSheetResult;
+  runDataIntegrityAudit: () => DataIntegrityReport;
+  runMasterCertification: () => MasterCertificationReport;
 
   // Double-Entry Accounting
   postJournalEntry: (entry: Omit<JournalEntry, "id" | "posted">) => { success: boolean; error?: string };
@@ -321,6 +357,53 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     ];
   });
 
+  // Foundation Hardening & Ledger-Derived Collections
+  const [postingConfig, setPostingConfig] = useState<PostingAccountConfiguration>(() => {
+    const saved = localStorage.getItem("novaro_posting_config");
+    return saved ? JSON.parse(saved) : defaultPostingAccountConfiguration;
+  });
+
+  const [costLayers, setCostLayers] = useState<CostLayer[]>(() => {
+    const saved = localStorage.getItem("novaro_cost_layers");
+    if (saved) return JSON.parse(saved);
+    return initialBatches.map(b => ({
+      id: `layer-${b.id}`,
+      batchId: b.id,
+      batchNumber: b.batchNumber,
+      itemId: b.itemId,
+      warehouseId: b.warehouseId,
+      receivedDate: b.manufactureDate,
+      initialQuantity: b.quantity,
+      remainingQuantity: b.quantity,
+      unitCost: b.costPerUnit,
+      currency: Currency.SAR,
+      isExhausted: b.quantity <= 0,
+      sourceDocumentType: "PurchaseOrder" as const,
+      sourceDocumentId: "OB-2026"
+    }));
+  });
+
+  const [stockMovements, setStockMovements] = useState<DomainStockMovement[]>(() => {
+    const saved = localStorage.getItem("novaro_stock_movements");
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const [fiscalPeriods, setFiscalPeriods] = useState<FiscalPeriod[]>(() => {
+    const saved = localStorage.getItem("novaro_fiscal_periods");
+    if (saved) return JSON.parse(saved);
+    return [
+      { id: "FP-2026-Q1", code: "2026-Q1", fiscalYear: "2026", startDate: "2026-01-01", endDate: "2026-03-31", isClosed: false },
+      { id: "FP-2026-Q2", code: "2026-Q2", fiscalYear: "2026", startDate: "2026-04-01", endDate: "2026-06-30", isClosed: false },
+      { id: "FP-2026-Q3", code: "2026-Q3", fiscalYear: "2026", startDate: "2026-07-01", endDate: "2026-09-30", isClosed: false },
+      { id: "FP-2026-Q4", code: "2026-Q4", fiscalYear: "2026", startDate: "2026-10-01", endDate: "2026-12-31", isClosed: false }
+    ];
+  });
+
+  const [supplierMovements, setSupplierMovements] = useState<DomainSupplierMovement[]>(() => {
+    const saved = localStorage.getItem("novaro_supplier_movements");
+    return saved ? JSON.parse(saved) : [];
+  });
+
   // Sync to local storage when state changes
   useEffect(() => {
     localStorage.setItem("novaro_accounts", JSON.stringify(accounts));
@@ -434,51 +517,38 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     localStorage.setItem("novaro_customer_movements", JSON.stringify(customerMovements));
   }, [customerMovements]);
 
-  // Recalculate account balances based on journal entries
   useEffect(() => {
-    const updatedAccounts = accounts.map(acc => {
-      let debitSum = 0;
-      let creditSum = 0;
-      
-      journalEntries.forEach(je => {
-        const isPosted = je.posted || je.workflowStatus === "Posted";
-        if (isPosted) {
-          je.items.forEach(item => {
-            if (item.accountId === acc.id) {
-              debitSum += item.debit;
-              creditSum += item.credit;
-            }
-          });
-        }
-      });
+    localStorage.setItem("novaro_posting_config", JSON.stringify(postingConfig));
+  }, [postingConfig]);
 
-      // Asset & Expense balance = Debit - Credit
-      // Liability, Equity, Income balance = Credit - Debit
-      let finalBalance = 0;
-      if (acc.type === AccountType.Asset || acc.type === AccountType.Expense) {
-        finalBalance = debitSum - creditSum;
-      } else {
-        finalBalance = creditSum - debitSum;
-      }
+  useEffect(() => {
+    localStorage.setItem("novaro_cost_layers", JSON.stringify(costLayers));
+  }, [costLayers]);
 
-      return { ...acc, balance: finalBalance };
-    });
+  useEffect(() => {
+    localStorage.setItem("novaro_stock_movements", JSON.stringify(stockMovements));
+  }, [stockMovements]);
 
-    // Check if changed before setting to avoid infinite loops
+  useEffect(() => {
+    localStorage.setItem("novaro_fiscal_periods", JSON.stringify(fiscalPeriods));
+  }, [fiscalPeriods]);
+
+  useEffect(() => {
+    localStorage.setItem("novaro_supplier_movements", JSON.stringify(supplierMovements));
+  }, [supplierMovements]);
+
+  // Recalculate account balances based on journal entries via AccountingEngine
+  useEffect(() => {
+    const updatedAccounts = AccountingEngine.calculateAllAccountBalances(accounts, journalEntries);
     const hasChanged = JSON.stringify(updatedAccounts) !== JSON.stringify(accounts);
     if (hasChanged) {
       setAccounts(updatedAccounts);
     }
   }, [journalEntries]);
 
-  // Recalculate Item Stocks based on inventory transactions, batches, and operations
+  // Recalculate Item Stocks based on inventory batches via InventoryEngine
   useEffect(() => {
-    const updatedItems = items.map(item => {
-      const itemBatches = batches.filter(b => b.itemId === item.id);
-      const totalStock = itemBatches.reduce((acc, b) => acc + b.quantity, 0);
-      return { ...item, currentStock: totalStock };
-    });
-
+    const updatedItems = InventoryEngine.calculateItemStockBalances(items, batches);
     const hasChanged = JSON.stringify(updatedItems) !== JSON.stringify(items);
     if (hasChanged) {
       setItems(updatedItems);
@@ -501,80 +571,41 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setAuditLogs(prev => [newLog, ...prev]);
   };
 
-  // 1. Post Journal Entry (Double-Entry Bookkeeping Rules)
+  // 1. Post Journal Entry (Double-Entry Bookkeeping Rules enforced by AccountingEngine)
   const postJournalEntry = (entry: Omit<JournalEntry, "id" | "posted">) => {
-    const totalDebit = entry.items.reduce((acc, item) => acc + item.debit, 0);
-    const totalCredit = entry.items.reduce((acc, item) => acc + item.credit, 0);
-
-    // Validate double-entry equality
-    if (Math.abs(totalDebit - totalCredit) > 0.01) {
-      return { 
-        success: false, 
-        error: `Unequal Debits (SAR ${totalDebit.toFixed(2)}) and Credits (SAR ${totalCredit.toFixed(2)}). Journal Entry must balance.` 
-      };
+    const postResult = AccountingEngine.postEntry(entry, journalEntries, fiscalPeriods);
+    if (!postResult.success || !postResult.entry) {
+      return { success: false, error: postResult.error || "Journal entry posting failed." };
     }
 
-    if (entry.items.length < 2) {
-      return {
-        success: false,
-        error: "Journal Entry must contain at least 2 account allocation lines."
-      };
-    }
-
-    const newId = entry.reference?.startsWith("REV-") ? entry.reference : `JE-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
-    const newEntry: JournalEntry = {
-      ...entry,
-      id: newId,
-      posted: true,
-      workflowStatus: entry.workflowStatus || "Posted",
-      currency: entry.currency || Currency.SAR,
-      exchangeRate: entry.exchangeRate || 1
-    };
-
-    setJournalEntries(prev => [newEntry, ...prev]);
-    addAuditLog("Post Journal Entry", `Posted double-entry voucher ${newId} (Total: SAR ${totalDebit.toFixed(2)}) - ${entry.notes}`);
+    setJournalEntries(prev => [postResult.entry!, ...prev]);
+    const totalDebit = postResult.entry.items.reduce((acc, item) => acc + item.debit, 0);
+    addAuditLog("Post Journal Entry", `Posted double-entry voucher ${postResult.entry.id} (Total: SAR ${totalDebit.toFixed(2)}) - ${entry.notes}`);
     
     return { success: true };
   };
 
-  // Reverse Journal Entry
+  // Reverse Journal Entry (Enforced by AccountingEngine)
   const reverseJournalEntry = (entryId: string, reason: string) => {
-    const original = journalEntries.find(j => j.id === entryId);
-    if (!original) return { success: false, error: "Journal Entry not found." };
-    
-    // Create reversed amounts
-    const reversedItems = original.items.map(item => ({
-      id: `jei-${Math.floor(100000 + Math.random() * 900000)}`,
-      accountId: item.accountId,
-      accountName: item.accountName,
-      debit: item.credit,
-      credit: item.debit,
-      notes: `Reversal flip of voucher ${original.id} - ${item.notes || ""}`
-    }));
-
-    const reverseId = `REV-${original.id}-${Math.floor(100 + Math.random() * 900)}`;
-    const result = postJournalEntry({
-      date: new Date().toISOString().split("T")[0],
-      reference: reverseId,
-      notes: `تراجع وقيد عكسي لـ ${original.id}. السبب: ${reason}`,
-      items: reversedItems,
-      workflowStatus: "Posted",
-      currency: original.currency || Currency.SAR,
-      exchangeRate: original.exchangeRate || 1
-    });
-
-    if (result.success) {
-      // Mark original entry as Cancelled
-      setJournalEntries(prev => prev.map(j => {
-        if (j.id === entryId) {
-          return { ...j, workflowStatus: "Cancelled" };
-        }
-        return j;
-      }));
-      addAuditLog("Reverse Journal Entry", `Successfully reversed journal voucher ${original.id} via balanced reversal voucher ${reverseId}.`, "Posted", "Cancelled", reason);
+    const reversalResult = AccountingEngine.reverseEntry(entryId, journalEntries, reason);
+    if (!reversalResult.success || !reversalResult.reversalEntry) {
+      return { success: false, error: reversalResult.error || "Journal entry reversal failed." };
     }
 
-    return result;
+    setJournalEntries(prev => [
+      reversalResult.reversalEntry!,
+      ...prev.map(j => j.id === entryId ? { ...j, workflowStatus: "Cancelled" as const } : j)
+    ]);
+
+    addAuditLog(
+      "Reverse Journal Entry", 
+      `Successfully reversed journal voucher ${entryId} via balanced reversal voucher ${reversalResult.reversalEntry.id}.`, 
+      "Posted", 
+      "Cancelled", 
+      reason
+    );
+
+    return { success: true };
   };
 
   // Recurring entry formula creators
@@ -719,113 +750,76 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return result;
   };
 
-  // 2. Add Roasting Job (Deduct green coffee/spices, add roasted intermediate item)
+  // 2. Add Roasting Job (Delegates to ManufacturingEngine with atomic inventory & layer updates)
   const addRoastingJob = (job: Omit<RoastingJob, "id" | "weightLossPct">) => {
-    const rawBatches = batches.filter(b => b.itemId === job.inputItemId && b.quantity > 0);
-    const totalRawAvailable = rawBatches.reduce((acc, b) => acc + b.quantity, 0);
+    const res = ManufacturingEngine.executeRoasting(
+      {
+        batchNumber: job.batchNumber,
+        recipeId: job.recipeId,
+        recipeName: job.recipeName,
+        inputItemId: job.inputItemId,
+        inputQuantity: job.inputQuantity,
+        outputItemId: job.outputItemId,
+        outputQuantity: job.outputQuantity,
+        roastTimeMinutes: job.roastTimeMinutes,
+        tempCelsius: job.tempCelsius,
+        workerName: job.workerName,
+        jobDate: job.jobDate,
+        roastProfile: job.roastProfile,
+        operator: job.operator
+      },
+      items,
+      batches,
+      costLayers,
+      stockMovements
+    );
 
-    if (totalRawAvailable < job.inputQuantity) {
-      return {
-        success: false,
-        error: `عذراً: رصيد البن الخام غير كافٍ. المتوفر: ${totalRawAvailable} كغم، المطلوب: ${job.inputQuantity} كغم.`
-      };
+    if (!res.success || !res.job || !res.batches || !res.layers || !res.movements) {
+      return { success: false, error: res.error || "Roasting operation failed." };
     }
 
-    // Deduct raw material from oldest batches (FIFO)
-    let remainingToDeduct = job.inputQuantity;
-    const updatedBatches = batches.map(batch => {
-      if (batch.itemId === job.inputItemId && batch.quantity > 0 && remainingToDeduct > 0) {
-        if (batch.quantity >= remainingToDeduct) {
-          const updatedQty = batch.quantity - remainingToDeduct;
-          remainingToDeduct = 0;
-          return { ...batch, quantity: parseFloat(updatedQty.toFixed(3)) };
-        } else {
-          remainingToDeduct -= batch.quantity;
-          return { ...batch, quantity: 0 };
-        }
-      }
-      return batch;
-    });
-
-    const weightLoss = job.inputQuantity - job.outputQuantity;
-    const weightLossPct = parseFloat(((weightLoss / job.inputQuantity) * 100).toFixed(2));
-
-    const jobId = `RST-JOB-${Math.floor(1000 + Math.random() * 9000)}`;
-    const completedJob: RoastingJob = {
-      ...job,
-      id: jobId,
-      weightLossPct,
-      status: JobStatus.Completed
-    };
+    setBatches(res.batches);
+    setCostLayers(res.layers);
+    setStockMovements(res.movements);
+    setRoastingJobs(prev => [res.job!, ...prev]);
 
     const inputItem = items.find(i => i.id === job.inputItemId);
     const outputItem = items.find(i => i.id === job.outputItemId);
-    
-    const newRoastedBatch: Batch = {
-      id: `bat-${Math.floor(100000 + Math.random() * 900000)}`,
-      batchNumber: job.batchNumber,
-      itemId: job.outputItemId,
-      itemName: outputItem?.name || "",
-      manufactureDate: job.jobDate,
-      expiryDate: new Date(new Date(job.jobDate).setFullYear(new Date(job.jobDate).getFullYear() + 1)).toISOString().split('T')[0],
-      quantity: job.outputQuantity,
-      costPerUnit: parseFloat((((inputItem?.cost || 0) * job.inputQuantity) / job.outputQuantity).toFixed(2)),
-      warehouseId: "wh-2"
-    };
+    addAuditLog("Roasting Job", `Completed Roasting Job ${res.job.id}. Roasted ${job.inputQuantity}kg of ${inputItem?.name} into ${job.outputQuantity}kg of ${outputItem?.name}.`);
 
-    setBatches([...updatedBatches, newRoastedBatch]);
-    setRoastingJobs(prev => [completedJob, ...prev]);
-    
-    addAuditLog("Roasting Job", `Completed Roasting Job ${jobId}. Roasted ${job.inputQuantity}kg of ${inputItem?.name} into ${job.outputQuantity}kg of ${outputItem?.name}.`);
-    
     return { success: true };
   };
 
-  // 3. Add Grinding Job (Deduct roasted beans, add ground coffee powder)
+  // 3. Add Grinding Job (Delegates to ManufacturingEngine with atomic inventory & layer updates)
   const addGrindingJob = (job: Omit<GrindingJob, "id">) => {
-    const targetBatchIndex = batches.findIndex(b => b.batchNumber === job.inputBatchNumber && b.itemId === job.inputItemId);
-    
-    if (targetBatchIndex === -1) {
-      return { success: false, error: `الدفعة رقم '${job.inputBatchNumber}' غير متوفرة بالمستودع.` };
+    const res = ManufacturingEngine.executeGrinding(
+      {
+        jobDate: job.jobDate,
+        inputBatchNumber: job.inputBatchNumber,
+        inputItemId: job.inputItemId,
+        inputQuantity: job.inputQuantity,
+        outputItemId: job.outputItemId,
+        outputQuantity: job.outputQuantity,
+        finenessSetting: job.finenessSetting,
+        operator: job.operator
+      },
+      items,
+      batches,
+      costLayers,
+      stockMovements
+    );
+
+    if (!res.success || !res.job || !res.batches || !res.layers || !res.movements) {
+      return { success: false, error: res.error || "Grinding operation failed." };
     }
-    
-    const targetBatch = batches[targetBatchIndex];
-    if (targetBatch.quantity < job.inputQuantity) {
-      return { success: false, error: `الرصيد المتاح بالتشغيلة غير كافٍ. المتاح: ${targetBatch.quantity} كغم، المطلوب: ${job.inputQuantity} كغم.` };
-    }
 
-    const updatedBatches = batches.map((b, idx) => {
-      if (idx === targetBatchIndex) {
-        return { ...b, quantity: parseFloat((b.quantity - job.inputQuantity).toFixed(3)) };
-      }
-      return b;
-    });
+    setBatches(res.batches);
+    setCostLayers(res.layers);
+    setStockMovements(res.movements);
+    setGrindingJobs(prev => [res.job!, ...prev]);
 
-    const jobId = `GRD-JOB-${Math.floor(1000 + Math.random() * 9000)}`;
-    const newGrindingJob: GrindingJob = {
-      ...job,
-      id: jobId,
-      status: JobStatus.Completed
-    };
+    addAuditLog("Grinding Job", `Grinding Job ${res.job.id} Completed: Ground ${job.inputQuantity}kg beans into ${job.outputQuantity}kg ground powder.`);
 
-    const outputItem = items.find(i => i.id === job.outputItemId);
-    const newGroundBatch: Batch = {
-      id: `bat-${Math.floor(100000 + Math.random() * 900000)}`,
-      batchNumber: `G-${job.inputBatchNumber}`,
-      itemId: job.outputItemId,
-      itemName: outputItem?.name || "",
-      manufactureDate: job.jobDate,
-      expiryDate: targetBatch.expiryDate,
-      quantity: job.outputQuantity,
-      costPerUnit: parseFloat((targetBatch.costPerUnit * (job.inputQuantity / job.outputQuantity)).toFixed(2)),
-      warehouseId: "wh-2"
-    };
-
-    setBatches([...updatedBatches, newGroundBatch]);
-    setGrindingJobs(prev => [newGrindingJob, ...prev]);
-
-    addAuditLog("Grinding Job", `Grinding Job ${jobId} Completed: Ground ${job.inputQuantity}kg beans into ${job.outputQuantity}kg ground powder.`);
-    
     return { success: true };
   };
 
@@ -965,185 +959,103 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     addAuditLog("Create Purchase Order", `Created purchase order ${poId} for supplier ${po.supplierName} (Total: SAR ${po.totalAmount})`);
   };
 
-  // 6. Receive Purchase Order (Updates Stock + Triggers Automated Accounting Entry)
+  // 6. Receive Purchase Order (Delegates to CommerceService with atomic stock & GL postings)
   const receivePurchaseOrder = (poId: string) => {
-    const poIndex = purchaseOrders.findIndex(p => p.id === poId);
-    if (poIndex === -1) return { success: false, error: "Purchase Order not found." };
-    
-    const po = purchaseOrders[poIndex];
+    const po = purchaseOrders.find(p => p.id === poId);
+    if (!po) return { success: false, error: "Purchase Order not found." };
     if (po.status === "Received") return { success: false, error: "Purchase Order has already been received." };
 
-    // Update PO Status
-    const updatedPOs = purchaseOrders.map((p, idx) => {
-      if (idx === poIndex) return { ...p, status: "Received" as const, workflowStatus: "Posted" as const };
-      return p;
+    const res = CommerceService.processPurchaseReceipt({
+      dto: {
+        purchaseOrder: po,
+        actor: currentUser.username || "system"
+      },
+      config: postingConfig,
+      batches,
+      costLayers,
+      stockMovements,
+      journalEntries,
+      suppliers,
+      supplierMovements,
+      fiscalPeriods,
+      getAccountName: (id: string) => accounts.find(a => a.id === id)?.name || "Account"
     });
 
-    // Create item batches for each received raw material
-    const newBatches: Batch[] = po.items.map(pItem => {
-      const dbItem = items.find(i => i.id === pItem.itemId);
-      return {
-        id: `bat-${Math.floor(100000 + Math.random() * 900000)}`,
-        batchNumber: `B-${dbItem?.sku}-${new Date().toISOString().slice(2,10).replace(/-/g, "")}`,
-        itemId: pItem.itemId,
-        itemName: pItem.itemName,
-        manufactureDate: po.date,
-        expiryDate: new Date(new Date(po.date).setFullYear(new Date(po.date).getFullYear() + 2)).toISOString().split('T')[0],
-        quantity: pItem.quantity,
-        supplierId: po.supplierId,
-        costPerUnit: pItem.price,
-        warehouseId: "wh-1"
-      };
-    });
-
-    // Double Entry for received order (accounting rules)
-    const journalItems = [
-      { id: "jei-a", accountId: "acc-1300", accountName: "Raw Material Stock", debit: po.totalAmount, credit: 0 },
-      { id: "jei-b", accountId: "acc-2000", accountName: "Accounts Payable", debit: 0, credit: po.totalAmount }
-    ];
-
-    const accountingResult = postJournalEntry({
-      date: po.date,
-      reference: po.id,
-      notes: `Automated inventory allocation for received Purchase Order ${po.id}`,
-      items: journalItems,
-      workflowStatus: "Posted",
-      currency: po.currency || Currency.SAR,
-      exchangeRate: po.exchangeRate || 1
-    });
-
-    if (!accountingResult.success) {
-      return { success: false, error: `Accounting integration failed: ${accountingResult.error}` };
+    if (!res.success || !res.data) {
+      return { success: false, error: res.error || "Purchase receipt failed." };
     }
 
-    // Update supplier outstanding balance
-    setSuppliers(prev => prev.map(sup => {
-      if (sup.id === po.supplierId) {
-        return { ...sup, balance: sup.balance + po.totalAmount };
+    setPurchaseOrders(prev => prev.map(p => p.id === poId ? res.data!.purchaseOrder : p));
+    setBatches(res.data.batches);
+    setCostLayers(res.data.costLayers);
+    setStockMovements(res.data.stockMovements);
+    setJournalEntries(res.data.journalEntries);
+    setSupplierMovements(res.data.supplierMovements);
+    setSuppliers(prev => prev.map(s => {
+      if (s.id === po.supplierId) {
+        return { ...s, balance: s.balance + po.totalAmount };
       }
-      return sup;
+      return s;
     }));
 
-    setPurchaseOrders(updatedPOs);
-    setBatches(prev => [...prev, ...newBatches]);
-    
     addAuditLog("Receive Purchase Order", `Received Goods for ${po.id}. Created inventory batches and processed matching General Ledger entries.`);
-
     return { success: true };
   };
 
-  // 7. Add Sales Invoice (Wholesale / Retail / POS + Triggers ERP Bookkeeping Engine)
+  // 7. Add Sales Invoice (Delegates to CommerceService with atomic FIFO valuation, COGS, AR ledger)
   const addSalesInvoice = (invoice: Omit<SalesInvoice, "id" | "date">, type: "Wholesale" | "Retail" | "POS") => {
-    for (const sItem of invoice.items) {
-      const dbItem = items.find(i => i.id === sItem.itemId);
-      if (!dbItem || dbItem.currentStock < sItem.quantity) {
-        return { 
-          success: false, 
-          error: `عذراً: الرصيد غير كافٍ للصنف '${sItem.itemName}'. المتوفر: ${dbItem?.currentStock || 0} كيس.` 
-        };
-      }
-    }
-
-    // Deduct finished product stocks from FIFO batches
-    let updatedBatches = [...batches];
-    let totalCogs = 0;
-
-    for (const sItem of invoice.items) {
-      let remainingToDeduct = sItem.quantity;
-      updatedBatches = updatedBatches.map(batch => {
-        if (batch.itemId === sItem.itemId && batch.quantity > 0 && remainingToDeduct > 0) {
-          const deduction = Math.min(batch.quantity, remainingToDeduct);
-          remainingToDeduct -= deduction;
-          totalCogs += deduction * batch.costPerUnit;
-          return { ...batch, quantity: parseFloat((batch.quantity - deduction).toFixed(3)) };
-        }
-        return batch;
-      });
-    }
-
-    const siId = `SI-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
-    const invoiceDate = new Date().toISOString().split('T')[0];
-    const newInvoice: SalesInvoice = {
-      ...invoice,
-      id: siId,
-      date: invoiceDate,
-      type,
-      workflowStatus: "Posted"
-    };
-
-    // Calculate dynamic ledger allocations
-    const debitAccountId = invoice.status === "Paid" 
-      ? (type === "POS" ? "acc-1000" : "acc-1100")
-      : "acc-1200";
-      
-    const debitAccountName = invoice.status === "Paid"
-      ? (type === "POS" ? "Cash in Hand" : "Al-Rajhi Bank")
-      : "Accounts Receivable";
-
-    const creditAccountId = type === "POS" ? "acc-4100" : "acc-4000";
-    const creditAccountName = type === "POS" ? "Retail POS Revenue" : "Wholesale Revenue";
-
-    // Double Entry for Sales Value
-    const salesJournalItems = [
-      { id: "jei-s1", accountId: debitAccountId, accountName: debitAccountName, debit: invoice.totalAmount, credit: 0 },
-      { id: "jei-s2", accountId: creditAccountId, accountName: creditAccountName, debit: 0, credit: invoice.totalAmount }
-    ];
-
-    // Double Entry for Inventory Cost (COGS Matching Principle)
-    const cogsJournalItems = [
-      { id: "jei-c1", accountId: "acc-5000", accountName: "Cost of Goods Sold (COGS)", debit: totalCogs, credit: 0 },
-      { id: "jei-c2", accountId: "acc-1310", accountName: "Finished Product Stock", debit: 0, credit: totalCogs }
-    ];
-
-    // Post Sales entries
-    postJournalEntry({
-      date: invoiceDate,
-      reference: siId,
-      notes: `Automated Sales entry for Invoice ${siId} (${type})`,
-      items: salesJournalItems,
-      workflowStatus: "Posted",
-      currency: invoice.currency || Currency.SAR,
-      exchangeRate: invoice.exchangeRate || 1
+    const isPaid = invoice.status === "Paid";
+    const res = CommerceService.processSalesInvoice({
+      dto: {
+        invoice: {
+          ...invoice,
+          date: new Date().toISOString().split("T")[0]
+        },
+        type,
+        isPaid,
+        actor: currentUser.username || "system"
+      },
+      config: postingConfig,
+      batches,
+      costLayers,
+      stockMovements,
+      journalEntries,
+      customers,
+      customerMovements,
+      fiscalPeriods,
+      getAccountName: (id: string) => accounts.find(a => a.id === id)?.name || "Account"
     });
 
-    // Post Cost match entries
-    postJournalEntry({
-      date: invoiceDate,
-      reference: siId,
-      notes: `Automated COGS deduction for Invoice ${siId} (Cost of Sales)`,
-      items: cogsJournalItems,
-      workflowStatus: "Posted",
-      currency: invoice.currency || Currency.SAR,
-      exchangeRate: invoice.exchangeRate || 1
-    });
+    if (!res.success || !res.data) {
+      return { success: false, error: res.error || "Sales invoice processing failed." };
+    }
 
-    // If Unpaid, increase customer accounts balance
-    if (invoice.status === "Unpaid") {
-      setCustomers(prev => prev.map(cust => {
-        if (cust.id === invoice.customerId) {
-          return { ...cust, balance: cust.balance + invoice.totalAmount };
+    setBatches(res.data.batches);
+    setCostLayers(res.data.costLayers);
+    setStockMovements(res.data.stockMovements);
+    setJournalEntries(res.data.journalEntries);
+    setCustomerMovements(res.data.customerMovements);
+    setSalesInvoices(prev => [res.data!.invoice, ...prev]);
+
+    if (!isPaid) {
+      setCustomers(prev => prev.map(c => {
+        if (c.id === invoice.customerId) {
+          return { ...c, balance: c.balance + invoice.totalAmount };
         }
-        return cust;
+        return c;
       }));
-    }
-
-    // Register cash/bank transaction if paid
-    if (invoice.status === "Paid") {
+    } else {
       const newTx: BankTransaction = {
         id: `tx-${Math.floor(100000 + Math.random() * 900000)}`,
-        date: invoiceDate,
+        date: res.data.invoice.date,
         type: "Deposit",
         amount: invoice.totalAmount,
-        description: `Customer payment received for Sales Invoice ${siId}`,
+        description: `Customer payment received for Sales Invoice ${res.data.invoice.id}`,
         accountName: type === "POS" ? "Cash" : "Al-Rajhi Bank"
       };
       setBankTransactions(prev => [newTx, ...prev]);
     }
 
-    setBatches(updatedBatches);
-    setSalesInvoices(prev => [newInvoice, ...prev]);
-
-    // Update POS Session counters if it's a POS sale
     if (type === "POS") {
       setPOSSessions(prev => prev.map(sess => {
         if (sess.status === "Open") {
@@ -1157,8 +1069,7 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }));
     }
 
-    addAuditLog("Sales Invoice", `Dispatched Sales Invoice ${siId} (${type}). Deducted warehouse lots, posted matching COGS.`);
-
+    addAuditLog("Sales Invoice", `Dispatched Sales Invoice ${res.data.invoice.id} (${type}). Deducted warehouse lots, posted matching COGS SAR ${res.data.totalCOGS.toFixed(2)}.`);
     return { success: true };
   };
 
@@ -1547,7 +1458,64 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       { id: "rec-1", name: "إيجار صالة المعرض الشهري المجدول", frequency: "Monthly", referenceEntryId: "JE-2026-0002", nextPostingDate: "2026-08-01", active: true }
     ]);
     
+    // Reset Foundation Hardening Collections
+    setPostingConfig(defaultPostingAccountConfiguration);
+    setCostLayers(initialBatches.map(b => ({
+      id: `layer-${b.id}`,
+      batchId: b.id,
+      batchNumber: b.batchNumber,
+      itemId: b.itemId,
+      warehouseId: b.warehouseId,
+      receivedDate: b.manufactureDate,
+      initialQuantity: b.quantity,
+      remainingQuantity: b.quantity,
+      unitCost: b.costPerUnit,
+      currency: Currency.SAR,
+      isExhausted: b.quantity <= 0,
+      sourceDocumentType: "PurchaseOrder" as const,
+      sourceDocumentId: "OB-2026"
+    })));
+    setStockMovements([]);
+    setFiscalPeriods([
+      { id: "FP-2026-Q1", code: "2026-Q1", fiscalYear: "2026", startDate: "2026-01-01", endDate: "2026-03-31", isClosed: false },
+      { id: "FP-2026-Q2", code: "2026-Q2", fiscalYear: "2026", startDate: "2026-04-01", endDate: "2026-06-30", isClosed: false },
+      { id: "FP-2026-Q3", code: "2026-Q3", fiscalYear: "2026", startDate: "2026-07-01", endDate: "2026-09-30", isClosed: false },
+      { id: "FP-2026-Q4", code: "2026-Q4", fiscalYear: "2026", startDate: "2026-10-01", endDate: "2026-12-31", isClosed: false }
+    ]);
+    setSupplierMovements([]);
+
     addAuditLog("Factory Reset", "Restored ERP database schemas to pristine initial seeds.");
+  };
+
+  // Ledger-derived reports & Auditing
+  const getTrialBalance = (_asOfDate?: string): TrialBalanceResult => {
+    return TrialBalanceService.getTrialBalance(accounts, journalEntries);
+  };
+
+  const getIncomeStatement = (_startDate?: string, _endDate?: string): IncomeStatementResult => {
+    return TrialBalanceService.generateIncomeStatement(accounts, journalEntries);
+  };
+
+  const getBalanceSheet = (_asOfDate?: string): BalanceSheetResult => {
+    return TrialBalanceService.generateBalanceSheet(accounts, journalEntries);
+  };
+
+  const runDataIntegrityAudit = (): DataIntegrityReport => {
+    return DataIntegrityChecker.runFullAudit({
+      accounts,
+      journalEntries,
+      batches,
+      items,
+      customers,
+      suppliers,
+      salesInvoices,
+      purchaseOrders,
+      postingConfig
+    });
+  };
+
+  const runMasterCertification = (): MasterCertificationReport => {
+    return runCertificationSuite();
   };
 
   // Toast notifications state
@@ -1804,6 +1772,14 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       companySettings, setCompanySettings,
       exchangeRates, setExchangeRates,
       inventoryAdjustments, stockTransfers, recurringEntries,
+
+      // Foundation Hardening & Financial Integrity
+      postingConfig, setPostingConfig,
+      costLayers, stockMovements, fiscalPeriods, supplierMovements,
+
+      // Ledger-derived reports & Auditing
+      getTrialBalance, getIncomeStatement, getBalanceSheet,
+      runDataIntegrityAudit, runMasterCertification,
       
       // Double Entry
       postJournalEntry, reverseJournalEntry,

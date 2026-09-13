@@ -176,6 +176,19 @@ export interface RoastingJob {
   weightLossPct: number; // calculated as ((input - output) / input) * 100
   status: JobStatus;
   workerName: string;
+
+  // UI Compatibility & Domain Aliases
+  batchId?: string;
+  greenItemId?: string;
+  greenItemName?: string;
+  greenQty?: number;
+  roastedItemId?: string;
+  roastedItemName?: string;
+  roastedQty?: number;
+  roastProfile?: string;
+  kilnTemperature?: number;
+  durationMinutes?: number;
+  operator?: string;
 }
 
 export interface GrindingJob {
@@ -187,6 +200,17 @@ export interface GrindingJob {
   outputItemId: string; // Ground Coffee
   outputQuantity: number; // in kg
   status: JobStatus;
+
+  // UI Compatibility & Domain Aliases
+  batchId?: string;
+  roastedItemId?: string;
+  roastedItemName?: string;
+  roastedQty?: number;
+  groundItemId?: string;
+  groundItemName?: string;
+  groundQty?: number;
+  finenessSetting?: string;
+  operator?: string;
 }
 
 export interface PackagingJob {
@@ -221,6 +245,8 @@ export interface PurchaseOrder {
   exchangeRate?: number;
   items: PurchaseOrderItem[];
   totalAmount: number;
+  subtotal?: number;
+  taxAmount?: number;
 }
 
 export interface SalesInvoiceItem {
@@ -242,6 +268,8 @@ export interface SalesInvoice {
   exchangeRate?: number;
   items: SalesInvoiceItem[];
   totalAmount: number;
+  subtotal?: number;
+  taxAmount?: number;
   type: "Wholesale" | "Retail" | "POS";
 }
 
