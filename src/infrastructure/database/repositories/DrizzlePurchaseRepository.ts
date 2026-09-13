@@ -1,0 +1,151 @@
+import { eq, and } from "drizzle-orm";
+import { db } from "../client/db";
+import { purchaseOrders, purchaseOrderItems } from "../schema/purchaseOrders";
+import { PurchaseRepository, TenantContext, QueryOptions } from "../../../core/application/repositories/RepositoryInterfaces";
+import { PurchaseOrder, Currency, DocumentWorkflowStatus } from "../../../types";
+
+const DEFAULT_TENANT_ID = "default-tenant";
+const DEFAULT_COMPANY_ID = "default-company";
+
+export class DrizzlePurchaseRepository implements PurchaseRepository {
+  async findById(id: string, context?: TenantContext): Promise<PurchaseOrder | null> {
+    const tenantId = context?.tenantId || DEFAULT_TENANT_ID;
+    const companyId = context?.companyId || DEFAULT_COMPANY_ID;
+
+    const headers = await db
+      .select()
+      .from(purchaseOrders)
+      .where(
+        and(
+          eq(purchaseOrders.id, id),
+          eq(purchaseOrders.tenantId, tenantId),
+          eq(purchaseOrders.companyId, companyId)
+        )
+      )
+      .limit(1);
+
+    if (headers.length === 0) return null;
+
+    const items = await db
+      .select()
+      .from(purchaseOrderItems)
+      .where(eq(purchaseOrderItems.purchaseOrderId, id));
+
+    return this.mapToDomain(headers[0], items);
+  }
+
+  async getAll(options?: QueryOptions): Promise<PurchaseOrder[]> {
+    const tenantId = options?.tenantId || DEFAULT_TENANT_ID;
+    const companyId = options?.companyId || DEFAULT_COMPANY_ID;
+
+    const headers = await db
+      .select()
+      .from(purchaseOrders)
+      .where(
+        and(
+          eq(purchaseOrders.tenantId, tenantId),
+          eq(purchaseOrders.companyId, companyId)
+        )
+      );
+
+    const result: PurchaseOrder[] = [];
+    for (const h of headers) {
+      const items = await db
+        .select()
+        .from(purchaseOrderItems)
+        .where(eq(purchaseOrderItems.purchaseOrderId, h.id));
+      result.push(this.mapToDomain(h, items));
+    }
+    return result;
+  }
+
+  async save(po: PurchaseOrder, context?: TenantContext): Promise<void> {
+    const tenantId = context?.tenantId || DEFAULT_TENANT_ID;
+    const companyId = context?.companyId || DEFAULT_COMPANY_ID;
+
+    await db
+      .insert(purchaseOrders)
+      .values({
+        id: po.id,
+        tenantId,
+        companyId,
+        supplierId: po.supplierId,
+        supplierName: po.supplierName,
+        date: po.date,
+        status: po.status,
+        workflowStatus: po.workflowStatus || (po.status === "Received" ? "Posted" : "Draft"),
+        currency: po.currency || "SAR",
+        exchangeRate: (po.exchangeRate ?? 1).toFixed(6),
+        subtotal: (po.subtotal ?? 0).toFixed(4),
+        taxAmount: (po.taxAmount ?? 0).toFixed(4),
+        totalAmount: (po.totalAmount ?? 0).toFixed(4),
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: purchaseOrders.id,
+        set: {
+          supplierId: po.supplierId,
+          supplierName: po.supplierName,
+          date: po.date,
+          status: po.status,
+          workflowStatus: po.workflowStatus || (po.status === "Received" ? "Posted" : "Draft"),
+          currency: po.currency || "SAR",
+          exchangeRate: (po.exchangeRate ?? 1).toFixed(6),
+          subtotal: (po.subtotal ?? 0).toFixed(4),
+          taxAmount: (po.taxAmount ?? 0).toFixed(4),
+          totalAmount: (po.totalAmount ?? 0).toFixed(4),
+          updatedAt: new Date(),
+        },
+      });
+
+    // Replace items
+    await db.delete(purchaseOrderItems).where(eq(purchaseOrderItems.purchaseOrderId, po.id));
+
+    if (po.items && po.items.length > 0) {
+      await db.insert(purchaseOrderItems).values(
+        po.items.map((it, idx) => ({
+          id: `${po.id}-item-${idx + 1}`,
+          tenantId,
+          companyId,
+          purchaseOrderId: po.id,
+          itemId: it.itemId,
+          itemName: it.itemName,
+          quantity: (it.quantity ?? 0).toFixed(4),
+          price: (it.price ?? 0).toFixed(4),
+          total: (it.total ?? 0).toFixed(4),
+        }))
+      );
+    }
+  }
+
+  async exists(id: string, context?: TenantContext): Promise<boolean> {
+    const po = await this.findById(id, context);
+    return po !== null;
+  }
+
+  private mapToDomain(
+    header: typeof purchaseOrders.$inferSelect,
+    itemsList: (typeof purchaseOrderItems.$inferSelect)[]
+  ): PurchaseOrder {
+    return {
+      id: header.id,
+      supplierId: header.supplierId,
+      supplierName: header.supplierName,
+      date: header.date,
+      status: header.status as "Draft" | "Approved" | "Received",
+      workflowStatus: header.workflowStatus as DocumentWorkflowStatus,
+      currency: (header.currency as Currency) || Currency.SAR,
+      exchangeRate: header.exchangeRate ? parseFloat(header.exchangeRate) : 1,
+      subtotal: header.subtotal ? parseFloat(header.subtotal) : undefined,
+      taxAmount: header.taxAmount ? parseFloat(header.taxAmount) : undefined,
+      totalAmount: parseFloat(header.totalAmount),
+      items: itemsList.map(it => ({
+        itemId: it.itemId,
+        itemName: it.itemName,
+        quantity: parseFloat(it.quantity),
+        price: parseFloat(it.price),
+        total: parseFloat(it.total),
+      })),
+    };
+  }
+}
