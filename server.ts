@@ -4,6 +4,17 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 
+import healthRouter from "./server/routes/health";
+import accountsRouter from "./server/routes/accounts";
+import journalEntriesRouter from "./server/routes/journalEntries";
+import reportsRouter from "./server/routes/reports";
+import customersRouter from "./server/routes/customers";
+import suppliersRouter from "./server/routes/suppliers";
+import inventoryRouter from "./server/routes/inventory";
+import salesRouter from "./server/routes/sales";
+import purchasesRouter from "./server/routes/purchases";
+import { errorHandler } from "./server/middleware/errorHandler";
+
 dotenv.config();
 
 // Lazy initialization of GoogleGenAI to ensure the app boots even if the key is momentarily missing
@@ -62,6 +73,17 @@ async function startServer() {
     }
   });
 
+  // NOVARO ERP Phase 2A Modular Routes
+  app.use("/api", healthRouter);
+  app.use("/api/v1/accounts", accountsRouter);
+  app.use("/api/v1/journal-entries", journalEntriesRouter);
+  app.use("/api/v1/reports", reportsRouter);
+  app.use("/api/v1/customers", customersRouter);
+  app.use("/api/v1/suppliers", suppliersRouter);
+  app.use("/api/v1/inventory", inventoryRouter);
+  app.use("/api/v1/sales", salesRouter);
+  app.use("/api/v1/purchases", purchasesRouter);
+
   // Simulated local ERPNext Database & REST Client endpoint
   app.post("/api/erpnext/simulate", (req, res) => {
     const { doctype, action, doc } = req.body;
@@ -97,6 +119,9 @@ async function startServer() {
 
     return res.status(400).json({ error: "Unsupported simulated action" });
   });
+
+  // Global API Error Handler
+  app.use(errorHandler);
 
   // Serve static assets or mount Vite middleware
   if (process.env.NODE_ENV !== "production") {
