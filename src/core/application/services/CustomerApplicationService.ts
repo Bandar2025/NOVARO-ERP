@@ -22,7 +22,12 @@ export class CustomerApplicationService {
     if (!customer.name || customer.name.trim() === "") {
       throw AppError.validation("Customer name is required.");
     }
-    await this.customerRepo.save(customer, context);
-    return customer;
+    const newCustomer: Customer = {
+      ...customer,
+      id: customer.id || `cust-${Date.now()}`,
+      balance: customer.balance ?? 0
+    };
+    await this.customerRepo.save(newCustomer, context);
+    return newCustomer;
   }
 }

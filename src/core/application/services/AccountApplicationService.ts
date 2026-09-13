@@ -68,7 +68,13 @@ export class AccountApplicationService {
       throw AppError.conflict(`Account with code '${accountData.code}' already exists.`);
     }
 
-    await this.accountRepo.save(accountData, context);
-    return accountData;
+    const newAccount: Account = {
+      ...accountData,
+      id: accountData.id || `acc-${accountData.code || Date.now()}`,
+      balance: accountData.balance ?? 0
+    };
+
+    await this.accountRepo.save(newAccount, context);
+    return newAccount;
   }
 }

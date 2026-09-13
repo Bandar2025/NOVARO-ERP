@@ -22,7 +22,12 @@ export class SupplierApplicationService {
     if (!supplier.name || supplier.name.trim() === "") {
       throw AppError.validation("Supplier name is required.");
     }
-    await this.supplierRepo.save(supplier, context);
-    return supplier;
+    const newSupplier: Supplier = {
+      ...supplier,
+      id: supplier.id || `supp-${Date.now()}`,
+      balance: supplier.balance ?? 0
+    };
+    await this.supplierRepo.save(newSupplier, context);
+    return newSupplier;
   }
 }

@@ -88,7 +88,11 @@ export class JournalEntryApplicationService {
 
     const postResult = AccountingEngine.postEntry(entry, allEntries, periods);
     if (!postResult.success || !postResult.entry) {
-      if (postResult.error?.includes("Fiscal Period")) {
+      if (
+        postResult.error?.toLowerCase().includes("period") ||
+        postResult.error?.includes("CLOSED") ||
+        postResult.error?.includes("LOCKED")
+      ) {
         throw AppError.periodLocked(entry.date);
       }
       throw AppError.validation(postResult.error || "Failed to post journal entry.");
