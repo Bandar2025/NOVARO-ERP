@@ -3,14 +3,11 @@ import { db } from "../client/db";
 import { recipes, recipeMaterials } from "../schema/recipes";
 import { TenantContext, QueryOptions } from "../../../core/application/repositories/RepositoryInterfaces";
 import { Recipe } from "../../../types";
-
-const DEFAULT_TENANT_ID = "default-tenant";
-const DEFAULT_COMPANY_ID = "default-company";
+import { extractTenantContext } from "./contextUtils";
 
 export class DrizzleRecipeRepository {
   async findById(id: string, context?: TenantContext): Promise<Recipe | null> {
-    const tenantId = context?.tenantId || DEFAULT_TENANT_ID;
-    const companyId = context?.companyId || DEFAULT_COMPANY_ID;
+    const { tenantId, companyId } = extractTenantContext(context);
 
     const headers = await db
       .select()
@@ -29,14 +26,19 @@ export class DrizzleRecipeRepository {
     const materials = await db
       .select()
       .from(recipeMaterials)
-      .where(eq(recipeMaterials.recipeId, id));
+      .where(
+        and(
+          eq(recipeMaterials.recipeId, id),
+          eq(recipeMaterials.tenantId, tenantId),
+          eq(recipeMaterials.companyId, companyId)
+        )
+      );
 
     return this.mapToDomain(headers[0], materials);
   }
 
   async getAll(options?: QueryOptions): Promise<Recipe[]> {
-    const tenantId = options?.tenantId || DEFAULT_TENANT_ID;
-    const companyId = options?.companyId || DEFAULT_COMPANY_ID;
+    const { tenantId, companyId } = extractTenantContext(options);
 
     const headers = await db
       .select()
@@ -53,15 +55,20 @@ export class DrizzleRecipeRepository {
       const materials = await db
         .select()
         .from(recipeMaterials)
-        .where(eq(recipeMaterials.recipeId, h.id));
+        .where(
+          and(
+            eq(recipeMaterials.recipeId, h.id),
+            eq(recipeMaterials.tenantId, tenantId),
+            eq(recipeMaterials.companyId, companyId)
+          )
+        );
       result.push(this.mapToDomain(h, materials));
     }
     return result;
   }
 
   async save(recipe: Recipe, context?: TenantContext): Promise<void> {
-    const tenantId = context?.tenantId || DEFAULT_TENANT_ID;
-    const companyId = context?.companyId || DEFAULT_COMPANY_ID;
+    const { tenantId, companyId } = extractTenantContext(context);
 
     await db
       .insert(recipes)
@@ -88,7 +95,15 @@ export class DrizzleRecipeRepository {
         },
       });
 
-    await db.delete(recipeMaterials).where(eq(recipeMaterials.recipeId, recipe.id));
+    await db
+      .delete(recipeMaterials)
+      .where(
+        and(
+          eq(recipeMaterials.recipeId, recipe.id),
+          eq(recipeMaterials.tenantId, tenantId),
+          eq(recipeMaterials.companyId, companyId)
+        )
+      );
 
     if (recipe.rawMaterials && recipe.rawMaterials.length > 0) {
       await db.insert(recipeMaterials).values(

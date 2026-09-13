@@ -3,14 +3,11 @@ import { db } from "../client/db";
 import { accounts } from "../schema/accounts";
 import { AccountRepository, TenantContext, QueryOptions } from "../../../core/application/repositories/RepositoryInterfaces";
 import { Account, AccountType } from "../../../types";
-
-const DEFAULT_TENANT_ID = "default-tenant";
-const DEFAULT_COMPANY_ID = "default-company";
+import { extractTenantContext } from "./contextUtils";
 
 export class DrizzleAccountRepository implements AccountRepository {
   async findById(id: string, context?: TenantContext): Promise<Account | null> {
-    const tenantId = context?.tenantId || DEFAULT_TENANT_ID;
-    const companyId = context?.companyId || DEFAULT_COMPANY_ID;
+    const { tenantId, companyId } = extractTenantContext(context);
 
     const rows = await db
       .select()
@@ -29,8 +26,7 @@ export class DrizzleAccountRepository implements AccountRepository {
   }
 
   async findByCode(code: string, context?: TenantContext): Promise<Account | null> {
-    const tenantId = context?.tenantId || DEFAULT_TENANT_ID;
-    const companyId = context?.companyId || DEFAULT_COMPANY_ID;
+    const { tenantId, companyId } = extractTenantContext(context);
 
     const rows = await db
       .select()
@@ -49,8 +45,7 @@ export class DrizzleAccountRepository implements AccountRepository {
   }
 
   async getAll(options?: QueryOptions): Promise<Account[]> {
-    const tenantId = options?.tenantId || DEFAULT_TENANT_ID;
-    const companyId = options?.companyId || DEFAULT_COMPANY_ID;
+    const { tenantId, companyId } = extractTenantContext(options);
 
     const rows = await db
       .select()
@@ -66,8 +61,7 @@ export class DrizzleAccountRepository implements AccountRepository {
   }
 
   async save(account: Account, context?: TenantContext): Promise<void> {
-    const tenantId = context?.tenantId || DEFAULT_TENANT_ID;
-    const companyId = context?.companyId || DEFAULT_COMPANY_ID;
+    const { tenantId, companyId } = extractTenantContext(context);
 
     await db
       .insert(accounts)

@@ -75,6 +75,7 @@ export interface JournalEntry {
   currency?: Currency;
   exchangeRate?: number;
   isRecurring?: boolean;
+  reversalOfId?: string;
 }
 
 export interface Customer {

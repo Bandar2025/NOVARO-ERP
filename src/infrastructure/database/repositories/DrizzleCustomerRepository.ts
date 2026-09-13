@@ -3,14 +3,11 @@ import { db } from "../client/db";
 import { customers } from "../schema/customers";
 import { CustomerRepository, TenantContext, QueryOptions } from "../../../core/application/repositories/RepositoryInterfaces";
 import { Customer } from "../../../types";
-
-const DEFAULT_TENANT_ID = "default-tenant";
-const DEFAULT_COMPANY_ID = "default-company";
+import { extractTenantContext } from "./contextUtils";
 
 export class DrizzleCustomerRepository implements CustomerRepository {
   async findById(id: string, context?: TenantContext): Promise<Customer | null> {
-    const tenantId = context?.tenantId || DEFAULT_TENANT_ID;
-    const companyId = context?.companyId || DEFAULT_COMPANY_ID;
+    const { tenantId, companyId } = extractTenantContext(context);
 
     const rows = await db
       .select()
@@ -29,8 +26,7 @@ export class DrizzleCustomerRepository implements CustomerRepository {
   }
 
   async getAll(options?: QueryOptions): Promise<Customer[]> {
-    const tenantId = options?.tenantId || DEFAULT_TENANT_ID;
-    const companyId = options?.companyId || DEFAULT_COMPANY_ID;
+    const { tenantId, companyId } = extractTenantContext(options);
 
     const rows = await db
       .select()
@@ -46,8 +42,7 @@ export class DrizzleCustomerRepository implements CustomerRepository {
   }
 
   async save(customer: Customer, context?: TenantContext): Promise<void> {
-    const tenantId = context?.tenantId || DEFAULT_TENANT_ID;
-    const companyId = context?.companyId || DEFAULT_COMPANY_ID;
+    const { tenantId, companyId } = extractTenantContext(context);
 
     await db
       .insert(customers)
@@ -78,8 +73,7 @@ export class DrizzleCustomerRepository implements CustomerRepository {
   }
 
   async delete(id: string, context?: TenantContext): Promise<void> {
-    const tenantId = context?.tenantId || DEFAULT_TENANT_ID;
-    const companyId = context?.companyId || DEFAULT_COMPANY_ID;
+    const { tenantId, companyId } = extractTenantContext(context);
 
     await db
       .delete(customers)

@@ -1,4 +1,4 @@
-import { pgTable, text, boolean, timestamp, jsonb, index } from "drizzle-orm/pg-core";
+import { pgTable, text, boolean, timestamp, jsonb, index, unique } from "drizzle-orm/pg-core";
 import { tenants } from "./tenants";
 
 export const companies = pgTable("companies", {
@@ -14,5 +14,7 @@ export const companies = pgTable("companies", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => ({
+  tenantCompanyUnique: unique("uq_companies_tenant_id").on(table.tenantId, table.id),
   tenantIdx: index("idx_companies_tenant").on(table.tenantId),
 }));
+

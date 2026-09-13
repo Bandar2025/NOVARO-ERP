@@ -3,14 +3,11 @@ import { db } from "../client/db";
 import { auditLogs } from "../schema/auditLogs";
 import { AuditRepository, TenantContext, QueryOptions } from "../../../core/application/repositories/RepositoryInterfaces";
 import { AuditLog } from "../../../types";
-
-const DEFAULT_TENANT_ID = "default-tenant";
-const DEFAULT_COMPANY_ID = "default-company";
+import { extractTenantContext } from "./contextUtils";
 
 export class DrizzleAuditRepository implements AuditRepository {
   async log(audit: AuditLog, context?: TenantContext): Promise<void> {
-    const tenantId = context?.tenantId || DEFAULT_TENANT_ID;
-    const companyId = context?.companyId || DEFAULT_COMPANY_ID;
+    const { tenantId, companyId } = extractTenantContext(context);
 
     await db.insert(auditLogs).values({
       id: audit.id || `audit-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
@@ -28,8 +25,7 @@ export class DrizzleAuditRepository implements AuditRepository {
   }
 
   async getAll(options?: QueryOptions): Promise<AuditLog[]> {
-    const tenantId = options?.tenantId || DEFAULT_TENANT_ID;
-    const companyId = options?.companyId || DEFAULT_COMPANY_ID;
+    const { tenantId, companyId } = extractTenantContext(options);
 
     const rows = await db
       .select()

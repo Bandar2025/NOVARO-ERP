@@ -3,14 +3,11 @@ import { db } from "../client/db";
 import { salesInvoices, salesInvoiceItems } from "../schema/salesInvoices";
 import { SalesRepository, TenantContext, QueryOptions } from "../../../core/application/repositories/RepositoryInterfaces";
 import { SalesInvoice, Currency, DocumentWorkflowStatus } from "../../../types";
-
-const DEFAULT_TENANT_ID = "default-tenant";
-const DEFAULT_COMPANY_ID = "default-company";
+import { extractTenantContext } from "./contextUtils";
 
 export class DrizzleSalesRepository implements SalesRepository {
   async findById(id: string, context?: TenantContext): Promise<SalesInvoice | null> {
-    const tenantId = context?.tenantId || DEFAULT_TENANT_ID;
-    const companyId = context?.companyId || DEFAULT_COMPANY_ID;
+    const { tenantId, companyId } = extractTenantContext(context);
 
     const headers = await db
       .select()
@@ -29,14 +26,19 @@ export class DrizzleSalesRepository implements SalesRepository {
     const items = await db
       .select()
       .from(salesInvoiceItems)
-      .where(eq(salesInvoiceItems.salesInvoiceId, id));
+      .where(
+        and(
+          eq(salesInvoiceItems.salesInvoiceId, id),
+          eq(salesInvoiceItems.tenantId, tenantId),
+          eq(salesInvoiceItems.companyId, companyId)
+        )
+      );
 
     return this.mapToDomain(headers[0], items);
   }
 
   async getAll(options?: QueryOptions): Promise<SalesInvoice[]> {
-    const tenantId = options?.tenantId || DEFAULT_TENANT_ID;
-    const companyId = options?.companyId || DEFAULT_COMPANY_ID;
+    const { tenantId, companyId } = extractTenantContext(options);
 
     const headers = await db
       .select()
@@ -53,15 +55,20 @@ export class DrizzleSalesRepository implements SalesRepository {
       const items = await db
         .select()
         .from(salesInvoiceItems)
-        .where(eq(salesInvoiceItems.salesInvoiceId, h.id));
+        .where(
+          and(
+            eq(salesInvoiceItems.salesInvoiceId, h.id),
+            eq(salesInvoiceItems.tenantId, tenantId),
+            eq(salesInvoiceItems.companyId, companyId)
+          )
+        );
       result.push(this.mapToDomain(h, items));
     }
     return result;
   }
 
   async save(invoice: SalesInvoice, context?: TenantContext): Promise<void> {
-    const tenantId = context?.tenantId || DEFAULT_TENANT_ID;
-    const companyId = context?.companyId || DEFAULT_COMPANY_ID;
+    const { tenantId, companyId } = extractTenantContext(context);
 
     await db
       .insert(salesInvoices)
@@ -101,7 +108,15 @@ export class DrizzleSalesRepository implements SalesRepository {
       });
 
     // Replace items
-    await db.delete(salesInvoiceItems).where(eq(salesInvoiceItems.salesInvoiceId, invoice.id));
+    await db
+      .delete(salesInvoiceItems)
+      .where(
+        and(
+          eq(salesInvoiceItems.salesInvoiceId, invoice.id),
+          eq(salesInvoiceItems.tenantId, tenantId),
+          eq(salesInvoiceItems.companyId, companyId)
+        )
+      );
 
     if (invoice.items && invoice.items.length > 0) {
       await db.insert(salesInvoiceItems).values(

@@ -2,15 +2,12 @@ import { eq, and } from "drizzle-orm";
 import { db } from "../client/db";
 import { fiscalPeriods } from "../schema/fiscal";
 import { FiscalPeriodRepository, TenantContext, QueryOptions } from "../../../core/application/repositories/RepositoryInterfaces";
-import { FiscalPeriod } from "../../../types";
-
-const DEFAULT_TENANT_ID = "default-tenant";
-const DEFAULT_COMPANY_ID = "default-company";
+import { FiscalPeriod } from "../../../core/domain/accounting/FiscalPeriod";
+import { extractTenantContext } from "./contextUtils";
 
 export class DrizzleFiscalPeriodRepository implements FiscalPeriodRepository {
   async getAll(options?: QueryOptions): Promise<FiscalPeriod[]> {
-    const tenantId = options?.tenantId || DEFAULT_TENANT_ID;
-    const companyId = options?.companyId || DEFAULT_COMPANY_ID;
+    const { tenantId, companyId } = extractTenantContext(options);
 
     const rows = await db
       .select()
@@ -26,8 +23,7 @@ export class DrizzleFiscalPeriodRepository implements FiscalPeriodRepository {
   }
 
   async getById(id: string, context?: TenantContext): Promise<FiscalPeriod | null> {
-    const tenantId = context?.tenantId || DEFAULT_TENANT_ID;
-    const companyId = context?.companyId || DEFAULT_COMPANY_ID;
+    const { tenantId, companyId } = extractTenantContext(context);
 
     const rows = await db
       .select()
@@ -46,8 +42,7 @@ export class DrizzleFiscalPeriodRepository implements FiscalPeriodRepository {
   }
 
   async save(period: FiscalPeriod, context?: TenantContext): Promise<void> {
-    const tenantId = context?.tenantId || DEFAULT_TENANT_ID;
-    const companyId = context?.companyId || DEFAULT_COMPANY_ID;
+    const { tenantId, companyId } = extractTenantContext(context);
 
     await db
       .insert(fiscalPeriods)

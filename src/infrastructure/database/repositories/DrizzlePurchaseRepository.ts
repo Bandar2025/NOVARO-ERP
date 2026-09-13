@@ -3,14 +3,11 @@ import { db } from "../client/db";
 import { purchaseOrders, purchaseOrderItems } from "../schema/purchaseOrders";
 import { PurchaseRepository, TenantContext, QueryOptions } from "../../../core/application/repositories/RepositoryInterfaces";
 import { PurchaseOrder, Currency, DocumentWorkflowStatus } from "../../../types";
-
-const DEFAULT_TENANT_ID = "default-tenant";
-const DEFAULT_COMPANY_ID = "default-company";
+import { extractTenantContext } from "./contextUtils";
 
 export class DrizzlePurchaseRepository implements PurchaseRepository {
   async findById(id: string, context?: TenantContext): Promise<PurchaseOrder | null> {
-    const tenantId = context?.tenantId || DEFAULT_TENANT_ID;
-    const companyId = context?.companyId || DEFAULT_COMPANY_ID;
+    const { tenantId, companyId } = extractTenantContext(context);
 
     const headers = await db
       .select()
@@ -29,14 +26,19 @@ export class DrizzlePurchaseRepository implements PurchaseRepository {
     const items = await db
       .select()
       .from(purchaseOrderItems)
-      .where(eq(purchaseOrderItems.purchaseOrderId, id));
+      .where(
+        and(
+          eq(purchaseOrderItems.purchaseOrderId, id),
+          eq(purchaseOrderItems.tenantId, tenantId),
+          eq(purchaseOrderItems.companyId, companyId)
+        )
+      );
 
     return this.mapToDomain(headers[0], items);
   }
 
   async getAll(options?: QueryOptions): Promise<PurchaseOrder[]> {
-    const tenantId = options?.tenantId || DEFAULT_TENANT_ID;
-    const companyId = options?.companyId || DEFAULT_COMPANY_ID;
+    const { tenantId, companyId } = extractTenantContext(options);
 
     const headers = await db
       .select()
@@ -53,15 +55,20 @@ export class DrizzlePurchaseRepository implements PurchaseRepository {
       const items = await db
         .select()
         .from(purchaseOrderItems)
-        .where(eq(purchaseOrderItems.purchaseOrderId, h.id));
+        .where(
+          and(
+            eq(purchaseOrderItems.purchaseOrderId, h.id),
+            eq(purchaseOrderItems.tenantId, tenantId),
+            eq(purchaseOrderItems.companyId, companyId)
+          )
+        );
       result.push(this.mapToDomain(h, items));
     }
     return result;
   }
 
   async save(po: PurchaseOrder, context?: TenantContext): Promise<void> {
-    const tenantId = context?.tenantId || DEFAULT_TENANT_ID;
-    const companyId = context?.companyId || DEFAULT_COMPANY_ID;
+    const { tenantId, companyId } = extractTenantContext(context);
 
     await db
       .insert(purchaseOrders)
@@ -99,7 +106,15 @@ export class DrizzlePurchaseRepository implements PurchaseRepository {
       });
 
     // Replace items
-    await db.delete(purchaseOrderItems).where(eq(purchaseOrderItems.purchaseOrderId, po.id));
+    await db
+      .delete(purchaseOrderItems)
+      .where(
+        and(
+          eq(purchaseOrderItems.purchaseOrderId, po.id),
+          eq(purchaseOrderItems.tenantId, tenantId),
+          eq(purchaseOrderItems.companyId, companyId)
+        )
+      );
 
     if (po.items && po.items.length > 0) {
       await db.insert(purchaseOrderItems).values(

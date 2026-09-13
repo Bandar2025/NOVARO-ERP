@@ -4,14 +4,11 @@ import { journalEntries, journalEntryItems } from "../schema/journalEntries";
 import { JournalEntryRepository, TenantContext, QueryOptions } from "../../../core/application/repositories/RepositoryInterfaces";
 import { JournalEntry, JournalEntryItem, Currency, DocumentWorkflowStatus } from "../../../types";
 import { AppError } from "../../../core/application/errors/ApiError";
-
-const DEFAULT_TENANT_ID = "default-tenant";
-const DEFAULT_COMPANY_ID = "default-company";
+import { extractTenantContext } from "./contextUtils";
 
 export class DrizzleJournalEntryRepository implements JournalEntryRepository {
   async findById(id: string, context?: TenantContext): Promise<JournalEntry | null> {
-    const tenantId = context?.tenantId || DEFAULT_TENANT_ID;
-    const companyId = context?.companyId || DEFAULT_COMPANY_ID;
+    const { tenantId, companyId } = extractTenantContext(context);
 
     const headers = await db
       .select()
@@ -30,14 +27,19 @@ export class DrizzleJournalEntryRepository implements JournalEntryRepository {
     const items = await db
       .select()
       .from(journalEntryItems)
-      .where(eq(journalEntryItems.journalEntryId, id));
+      .where(
+        and(
+          eq(journalEntryItems.journalEntryId, id),
+          eq(journalEntryItems.tenantId, tenantId),
+          eq(journalEntryItems.companyId, companyId)
+        )
+      );
 
     return this.mapToDomain(headers[0], items);
   }
 
   async findByReference(reference: string, context?: TenantContext): Promise<JournalEntry[]> {
-    const tenantId = context?.tenantId || DEFAULT_TENANT_ID;
-    const companyId = context?.companyId || DEFAULT_COMPANY_ID;
+    const { tenantId, companyId } = extractTenantContext(context);
 
     const headers = await db
       .select()
@@ -55,15 +57,20 @@ export class DrizzleJournalEntryRepository implements JournalEntryRepository {
       const items = await db
         .select()
         .from(journalEntryItems)
-        .where(eq(journalEntryItems.journalEntryId, h.id));
+        .where(
+          and(
+            eq(journalEntryItems.journalEntryId, h.id),
+            eq(journalEntryItems.tenantId, tenantId),
+            eq(journalEntryItems.companyId, companyId)
+          )
+        );
       result.push(this.mapToDomain(h, items));
     }
     return result;
   }
 
   async getAll(options?: QueryOptions): Promise<JournalEntry[]> {
-    const tenantId = options?.tenantId || DEFAULT_TENANT_ID;
-    const companyId = options?.companyId || DEFAULT_COMPANY_ID;
+    const { tenantId, companyId } = extractTenantContext(options);
 
     const headers = await db
       .select()
@@ -80,15 +87,20 @@ export class DrizzleJournalEntryRepository implements JournalEntryRepository {
       const items = await db
         .select()
         .from(journalEntryItems)
-        .where(eq(journalEntryItems.journalEntryId, h.id));
+        .where(
+          and(
+            eq(journalEntryItems.journalEntryId, h.id),
+            eq(journalEntryItems.tenantId, tenantId),
+            eq(journalEntryItems.companyId, companyId)
+          )
+        );
       result.push(this.mapToDomain(h, items));
     }
     return result;
   }
 
   async getPostedEntries(options?: QueryOptions): Promise<JournalEntry[]> {
-    const tenantId = options?.tenantId || DEFAULT_TENANT_ID;
-    const companyId = options?.companyId || DEFAULT_COMPANY_ID;
+    const { tenantId, companyId } = extractTenantContext(options);
 
     const headers = await db
       .select()
@@ -106,20 +118,27 @@ export class DrizzleJournalEntryRepository implements JournalEntryRepository {
       const items = await db
         .select()
         .from(journalEntryItems)
-        .where(eq(journalEntryItems.journalEntryId, h.id));
+        .where(
+          and(
+            eq(journalEntryItems.journalEntryId, h.id),
+            eq(journalEntryItems.tenantId, tenantId),
+            eq(journalEntryItems.companyId, companyId)
+          )
+        );
       result.push(this.mapToDomain(h, items));
     }
     return result;
   }
 
   async save(entry: JournalEntry, context?: TenantContext): Promise<void> {
-    const tenantId = context?.tenantId || DEFAULT_TENANT_ID;
-    const companyId = context?.companyId || DEFAULT_COMPANY_ID;
+    const { tenantId, companyId } = extractTenantContext(context);
 
-    // Check if entry already exists and is posted (defense in depth)
+    // Strict posted entry immutability check
     const existing = await this.findById(entry.id, context);
-    if (existing && existing.posted && !entry.posted) {
-      throw AppError.conflict("Posted journal entry is immutable and cannot be edited", "POSTED_ENTRY_IMMUTABLE");
+    if (existing && (existing.posted || existing.workflowStatus === "Posted")) {
+      if (this.isFinancialDataChanged(existing, entry)) {
+        throw AppError.postedEntryImmutable(entry.id);
+      }
     }
 
     await db
@@ -136,6 +155,7 @@ export class DrizzleJournalEntryRepository implements JournalEntryRepository {
         currency: entry.currency || "SAR",
         exchangeRate: (entry.exchangeRate ?? 1).toFixed(6),
         isRecurring: entry.isRecurring || false,
+        reversalOfId: entry.reversalOfId || null,
         updatedAt: new Date(),
       })
       .onConflictDoUpdate({
@@ -149,12 +169,21 @@ export class DrizzleJournalEntryRepository implements JournalEntryRepository {
           currency: entry.currency || "SAR",
           exchangeRate: (entry.exchangeRate ?? 1).toFixed(6),
           isRecurring: entry.isRecurring || false,
+          reversalOfId: entry.reversalOfId || null,
           updatedAt: new Date(),
         },
       });
 
     // Replace items
-    await db.delete(journalEntryItems).where(eq(journalEntryItems.journalEntryId, entry.id));
+    await db
+      .delete(journalEntryItems)
+      .where(
+        and(
+          eq(journalEntryItems.journalEntryId, entry.id),
+          eq(journalEntryItems.tenantId, tenantId),
+          eq(journalEntryItems.companyId, companyId)
+        )
+      );
 
     if (entry.items && entry.items.length > 0) {
       await db.insert(journalEntryItems).values(
@@ -179,8 +208,8 @@ export class DrizzleJournalEntryRepository implements JournalEntryRepository {
       throw AppError.notFound(`Journal entry ${id} not found`);
     }
 
-    if (existing.posted) {
-      throw AppError.conflict("Posted journal entry is immutable and cannot be edited", "POSTED_ENTRY_IMMUTABLE");
+    if (existing.posted || existing.workflowStatus === "Posted") {
+      throw AppError.postedEntryImmutable(id);
     }
 
     const updated: JournalEntry = {
@@ -197,6 +226,27 @@ export class DrizzleJournalEntryRepository implements JournalEntryRepository {
     return je !== null;
   }
 
+  private isFinancialDataChanged(existing: JournalEntry, newEntry: JournalEntry): boolean {
+    if (existing.date !== newEntry.date) return true;
+    if (existing.reference !== newEntry.reference) return true;
+    if ((existing.currency || "SAR") !== (newEntry.currency || "SAR")) return true;
+    if (Math.abs((existing.exchangeRate ?? 1) - (newEntry.exchangeRate ?? 1)) > 0.000001) return true;
+    if (existing.posted !== newEntry.posted) return true;
+
+    const existingItems = existing.items || [];
+    const newItems = newEntry.items || [];
+    if (existingItems.length !== newItems.length) return true;
+
+    for (let i = 0; i < existingItems.length; i++) {
+      const e = existingItems[i];
+      const n = newItems[i];
+      if (e.accountId !== n.accountId) return true;
+      if (Math.abs((e.debit ?? 0) - (n.debit ?? 0)) > 0.0001) return true;
+      if (Math.abs((e.credit ?? 0) - (n.credit ?? 0)) > 0.0001) return true;
+    }
+    return false;
+  }
+
   private mapToDomain(
     header: typeof journalEntries.$inferSelect,
     itemsList: (typeof journalEntryItems.$inferSelect)[]
@@ -211,6 +261,7 @@ export class DrizzleJournalEntryRepository implements JournalEntryRepository {
       currency: (header.currency as Currency) || Currency.SAR,
       exchangeRate: header.exchangeRate ? parseFloat(header.exchangeRate) : 1,
       isRecurring: header.isRecurring || false,
+      reversalOfId: header.reversalOfId || undefined,
       items: itemsList.map(it => ({
         id: it.id,
         accountId: it.accountId,

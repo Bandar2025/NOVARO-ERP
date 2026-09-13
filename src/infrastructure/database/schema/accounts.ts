@@ -1,11 +1,11 @@
-import { pgTable, text, boolean, numeric, timestamp, index } from "drizzle-orm/pg-core";
+import { pgTable, text, boolean, numeric, timestamp, index, unique, foreignKey } from "drizzle-orm/pg-core";
 import { tenants } from "./tenants";
 import { companies } from "./companies";
 
 export const accounts = pgTable("accounts", {
   id: text("id").primaryKey(),
   tenantId: text("tenant_id").notNull().references(() => tenants.id, { onDelete: "restrict" }),
-  companyId: text("company_id").notNull().references(() => companies.id, { onDelete: "restrict" }),
+  companyId: text("company_id").notNull(),
   code: text("code").notNull(),
   name: text("name").notNull(),
   nameAr: text("name_ar").notNull(),
@@ -17,7 +17,20 @@ export const accounts = pgTable("accounts", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => ({
+  companyFk: foreignKey({
+    columns: [table.tenantId, table.companyId],
+    foreignColumns: [companies.tenantId, companies.id],
+    name: "fk_accounts_company",
+  }).onDelete("restrict"),
+  parentFk: foreignKey({
+    columns: [table.tenantId, table.companyId, table.parentId],
+    foreignColumns: [table.tenantId, table.companyId, table.id],
+    name: "fk_accounts_parent",
+  }).onDelete("restrict"),
+  tenantCompanyIdUnique: unique("uq_accounts_tenant_company_id").on(table.tenantId, table.companyId, table.id),
+  tenantCompanyCodeUnique: unique("uq_accounts_tenant_company_code").on(table.tenantId, table.companyId, table.code),
   tenantIdx: index("idx_accounts_tenant").on(table.tenantId),
   companyIdx: index("idx_accounts_company").on(table.companyId),
   codeIdx: index("idx_accounts_code").on(table.companyId, table.code),
 }));
+
