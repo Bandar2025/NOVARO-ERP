@@ -147,6 +147,12 @@ export class LocalJournalEntryRepository implements JournalEntryRepository {
     }
   }
 
+  async delete(id: string, _context?: TenantContext): Promise<void> {
+    const list = this.load();
+    const filtered = list.filter(e => e.id !== id);
+    this.saveAll(filtered);
+  }
+
   async exists(id: string, _context?: TenantContext): Promise<boolean> {
     const list = this.load();
     return list.some(e => e.id === id);

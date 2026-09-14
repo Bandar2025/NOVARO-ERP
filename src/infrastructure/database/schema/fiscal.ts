@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, index } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, index, unique } from "drizzle-orm/pg-core";
 import { tenants } from "./tenants";
 import { companies } from "./companies";
 
@@ -12,6 +12,7 @@ export const fiscalYears = pgTable("fiscal_years", {
   status: text("status").default("OPEN").notNull(), // OPEN, CLOSED
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => ({
+  tenantCompanyIdUnique: unique("uq_fiscal_years_tenant_company_id").on(table.tenantId, table.companyId, table.id),
   tenantIdx: index("idx_fiscal_years_tenant").on(table.tenantId),
   companyIdx: index("idx_fiscal_years_company").on(table.companyId),
 }));

@@ -548,6 +548,22 @@ ALTER TABLE "audit_logs" ADD CONSTRAINT "audit_logs_branch_id_branches_id_fk" FO
 ALTER TABLE "document_sequences" ADD CONSTRAINT "document_sequences_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "document_sequences" ADD CONSTRAINT "document_sequences_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "document_sequences" ADD CONSTRAINT "document_sequences_branch_id_branches_id_fk" FOREIGN KEY ("branch_id") REFERENCES "public"."branches"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "fiscal_years" ADD CONSTRAINT "uq_fiscal_years_tenant_company_id" UNIQUE("tenant_id", "company_id", "id");--> statement-breakpoint
+ALTER TABLE "document_sequences" ADD CONSTRAINT "fk_seq_fiscal_year" FOREIGN KEY ("tenant_id", "company_id", "fiscal_year_id") REFERENCES "public"."fiscal_years"("tenant_id", "company_id", "id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "companies" ADD CONSTRAINT "uq_companies_tenant_id" UNIQUE("tenant_id", "id");--> statement-breakpoint
+ALTER TABLE "journal_entries" ADD CONSTRAINT "uq_journal_entries_tenant_company_id" UNIQUE("tenant_id", "company_id", "id");--> statement-breakpoint
+ALTER TABLE "accounts" ADD CONSTRAINT "uq_accounts_tenant_company_id" UNIQUE("tenant_id", "company_id", "id");--> statement-breakpoint
+ALTER TABLE "accounts" ADD CONSTRAINT "uq_accounts_tenant_company_code" UNIQUE("tenant_id", "company_id", "code");--> statement-breakpoint
+ALTER TABLE "journal_entry_items" ADD CONSTRAINT "fk_jei_company" FOREIGN KEY ("tenant_id", "company_id") REFERENCES "public"."companies"("tenant_id", "id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "journal_entry_items" ADD CONSTRAINT "fk_jei_journal_entry" FOREIGN KEY ("tenant_id", "company_id", "journal_entry_id") REFERENCES "public"."journal_entries"("tenant_id", "company_id", "id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "journal_entry_items" ADD CONSTRAINT "fk_jei_account" FOREIGN KEY ("tenant_id", "company_id", "account_id") REFERENCES "public"."accounts"("tenant_id", "company_id", "id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "journal_entry_items" ADD CONSTRAINT "chk_jei_debit_nonneg" CHECK (debit >= 0);--> statement-breakpoint
+ALTER TABLE "journal_entry_items" ADD CONSTRAINT "chk_jei_credit_nonneg" CHECK (credit >= 0);--> statement-breakpoint
+ALTER TABLE "journal_entry_items" ADD CONSTRAINT "chk_jei_not_both_positive" CHECK (debit = 0 OR credit = 0);--> statement-breakpoint
+ALTER TABLE "items" ADD CONSTRAINT "uq_items_tenant_company_id" UNIQUE("tenant_id", "company_id", "id");--> statement-breakpoint
+ALTER TABLE "items" ADD CONSTRAINT "uq_items_tenant_company_sku" UNIQUE("tenant_id", "company_id", "sku");--> statement-breakpoint
+ALTER TABLE "customers" ADD CONSTRAINT "uq_customers_tenant_company_id" UNIQUE("tenant_id", "company_id", "id");--> statement-breakpoint
+ALTER TABLE "suppliers" ADD CONSTRAINT "uq_suppliers_tenant_company_id" UNIQUE("tenant_id", "company_id", "id");--> statement-breakpoint
 CREATE INDEX "idx_tenants_code" ON "tenants" USING btree ("code");--> statement-breakpoint
 CREATE INDEX "idx_companies_tenant" ON "companies" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "idx_branches_tenant" ON "branches" USING btree ("tenant_id");--> statement-breakpoint

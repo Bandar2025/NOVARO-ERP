@@ -55,6 +55,21 @@ export const journalEntryItems = pgTable("journal_entry_items", {
   notes: text("notes"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => ({
+  companyFk: foreignKey({
+    columns: [table.tenantId, table.companyId],
+    foreignColumns: [companies.tenantId, companies.id],
+    name: "fk_jei_company",
+  }).onDelete("restrict"),
+  journalEntryFk: foreignKey({
+    columns: [table.tenantId, table.companyId, table.journalEntryId],
+    foreignColumns: [journalEntries.tenantId, journalEntries.companyId, journalEntries.id],
+    name: "fk_jei_journal_entry",
+  }).onDelete("cascade"),
+  accountFk: foreignKey({
+    columns: [table.tenantId, table.companyId, table.accountId],
+    foreignColumns: [accounts.tenantId, accounts.companyId, accounts.id],
+    name: "fk_jei_account",
+  }).onDelete("restrict"),
   chkDebitNonNeg: check("chk_jei_debit_nonneg", sql`debit >= 0`),
   chkCreditNonNeg: check("chk_jei_credit_nonneg", sql`credit >= 0`),
   chkNotBothPositive: check("chk_jei_not_both_positive", sql`debit = 0 OR credit = 0`),

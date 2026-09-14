@@ -23,6 +23,7 @@ export interface JournalEntryRepository {
   getPostedEntries(options?: QueryOptions): Promise<JournalEntry[]>;
   save(entry: JournalEntry, context?: TenantContext): Promise<void>;
   update(id: string, entry: Partial<JournalEntry>, context?: TenantContext): Promise<void>;
+  delete(id: string, context?: TenantContext): Promise<void>;
   exists(id: string, context?: TenantContext): Promise<boolean>;
 }
 

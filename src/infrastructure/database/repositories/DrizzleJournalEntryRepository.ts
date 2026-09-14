@@ -141,26 +141,13 @@ export class DrizzleJournalEntryRepository implements JournalEntryRepository {
       }
     }
 
-    await db
-      .insert(journalEntries)
-      .values({
-        id: entry.id,
-        tenantId,
-        companyId,
-        date: entry.date,
-        reference: entry.reference,
-        notes: entry.notes || "",
-        posted: entry.posted,
-        workflowStatus: entry.workflowStatus || (entry.posted ? "Posted" : "Draft"),
-        currency: entry.currency || "SAR",
-        exchangeRate: (entry.exchangeRate ?? 1).toFixed(6),
-        isRecurring: entry.isRecurring || false,
-        reversalOfId: entry.reversalOfId || null,
-        updatedAt: new Date(),
-      })
-      .onConflictDoUpdate({
-        target: journalEntries.id,
-        set: {
+    await db.transaction(async (tx) => {
+      await tx
+        .insert(journalEntries)
+        .values({
+          id: entry.id,
+          tenantId,
+          companyId,
           date: entry.date,
           reference: entry.reference,
           notes: entry.notes || "",
@@ -171,35 +158,81 @@ export class DrizzleJournalEntryRepository implements JournalEntryRepository {
           isRecurring: entry.isRecurring || false,
           reversalOfId: entry.reversalOfId || null,
           updatedAt: new Date(),
-        },
-      });
+        })
+        .onConflictDoUpdate({
+          target: journalEntries.id,
+          set: {
+            date: entry.date,
+            reference: entry.reference,
+            notes: entry.notes || "",
+            posted: entry.posted,
+            workflowStatus: entry.workflowStatus || (entry.posted ? "Posted" : "Draft"),
+            currency: entry.currency || "SAR",
+            exchangeRate: (entry.exchangeRate ?? 1).toFixed(6),
+            isRecurring: entry.isRecurring || false,
+            reversalOfId: entry.reversalOfId || null,
+            updatedAt: new Date(),
+          },
+        });
 
-    // Replace items
-    await db
-      .delete(journalEntryItems)
-      .where(
-        and(
-          eq(journalEntryItems.journalEntryId, entry.id),
-          eq(journalEntryItems.tenantId, tenantId),
-          eq(journalEntryItems.companyId, companyId)
-        )
-      );
+      // Replace items
+      await tx
+        .delete(journalEntryItems)
+        .where(
+          and(
+            eq(journalEntryItems.journalEntryId, entry.id),
+            eq(journalEntryItems.tenantId, tenantId),
+            eq(journalEntryItems.companyId, companyId)
+          )
+        );
 
-    if (entry.items && entry.items.length > 0) {
-      await db.insert(journalEntryItems).values(
-        entry.items.map((it, idx) => ({
-          id: it.id || `${entry.id}-item-${idx + 1}`,
-          tenantId,
-          companyId,
-          journalEntryId: entry.id,
-          accountId: it.accountId,
-          accountName: it.accountName,
-          debit: (it.debit ?? 0).toFixed(4),
-          credit: (it.credit ?? 0).toFixed(4),
-          notes: it.notes || null,
-        }))
-      );
+      if (entry.items && entry.items.length > 0) {
+        await tx.insert(journalEntryItems).values(
+          entry.items.map((it, idx) => ({
+            id: it.id || `${entry.id}-item-${idx + 1}`,
+            tenantId,
+            companyId,
+            journalEntryId: entry.id,
+            accountId: it.accountId,
+            accountName: it.accountName,
+            debit: (it.debit ?? 0).toFixed(4),
+            credit: (it.credit ?? 0).toFixed(4),
+            notes: it.notes || null,
+          }))
+        );
+      }
+    });
+  }
+
+  async delete(id: string, context?: TenantContext): Promise<void> {
+    const { tenantId, companyId } = extractTenantContext(context);
+    const existing = await this.findById(id, context);
+    if (!existing) {
+      return;
     }
+    if (existing.posted || existing.workflowStatus === "Posted") {
+      throw AppError.postedEntryImmutable(id);
+    }
+    await db.transaction(async (tx) => {
+      await tx
+        .delete(journalEntryItems)
+        .where(
+          and(
+            eq(journalEntryItems.journalEntryId, id),
+            eq(journalEntryItems.tenantId, tenantId),
+            eq(journalEntryItems.companyId, companyId)
+          )
+        );
+      await tx
+        .delete(journalEntries)
+        .where(
+          and(
+            eq(journalEntries.id, id),
+            eq(journalEntries.tenantId, tenantId),
+            eq(journalEntries.companyId, companyId)
+          )
+        );
+    });
   }
 
   async update(id: string, partial: Partial<JournalEntry>, context?: TenantContext): Promise<void> {

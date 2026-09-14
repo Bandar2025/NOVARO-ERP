@@ -1,4 +1,4 @@
-import { pgTable, text, integer, timestamp, uniqueIndex, index } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, timestamp, uniqueIndex, index, foreignKey } from "drizzle-orm/pg-core";
 import { tenants } from "./tenants";
 import { companies } from "./companies";
 import { branches } from "./branches";
@@ -14,6 +14,11 @@ export const documentSequences = pgTable("document_sequences", {
   lastSequence: integer("last_sequence").default(0).notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => ({
+  fiscalYearFk: foreignKey({
+    columns: [table.tenantId, table.companyId, table.fiscalYearId],
+    foreignColumns: [fiscalYears.tenantId, fiscalYears.companyId, fiscalYears.id],
+    name: "fk_seq_fiscal_year",
+  }).onDelete("restrict"),
   uniqueScopeIdx: uniqueIndex("idx_doc_seq_scope").on(table.tenantId, table.companyId, table.branchId, table.documentType, table.fiscalYearId),
   tenantIdx: index("idx_doc_seq_tenant").on(table.tenantId),
 }));
