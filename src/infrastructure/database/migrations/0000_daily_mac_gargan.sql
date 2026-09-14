@@ -646,4 +646,66 @@ CREATE INDEX "idx_audit_company" ON "audit_logs" USING btree ("company_id");--> 
 CREATE INDEX "idx_audit_user" ON "audit_logs" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "idx_audit_time" ON "audit_logs" USING btree ("timestamp");--> statement-breakpoint
 CREATE UNIQUE INDEX "idx_doc_seq_scope" ON "document_sequences" USING btree ("tenant_id","company_id","branch_id","document_type","fiscal_year_id");--> statement-breakpoint
-CREATE INDEX "idx_doc_seq_tenant" ON "document_sequences" USING btree ("tenant_id");
+CREATE INDEX "idx_doc_seq_tenant" ON "document_sequences" USING btree ("tenant_id");--> statement-breakpoint
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "password_hash" text;--> statement-breakpoint
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "status" text DEFAULT 'ACTIVE' NOT NULL;--> statement-breakpoint
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "failed_login_attempts" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "last_login_at" timestamp with time zone;--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "roles" (
+	"id" text PRIMARY KEY NOT NULL,
+	"tenant_id" text NOT NULL,
+	"name" text NOT NULL,
+	"code" text NOT NULL,
+	"description" text,
+	"is_system_role" boolean DEFAULT false NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "uq_roles_tenant_code" UNIQUE("tenant_id", "code")
+);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "permissions" (
+	"id" text PRIMARY KEY NOT NULL,
+	"code" text NOT NULL UNIQUE,
+	"name" text NOT NULL,
+	"module" text NOT NULL,
+	"description" text,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "role_permissions" (
+	"role_id" text NOT NULL REFERENCES "roles"("id") ON DELETE CASCADE,
+	"permission_id" text NOT NULL REFERENCES "permissions"("id") ON DELETE CASCADE,
+	PRIMARY KEY ("role_id", "permission_id")
+);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "user_roles" (
+	"user_id" text NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+	"role_id" text NOT NULL REFERENCES "roles"("id") ON DELETE CASCADE,
+	"tenant_id" text NOT NULL REFERENCES "tenants"("id") ON DELETE CASCADE,
+	"company_id" text REFERENCES "companies"("id") ON DELETE CASCADE,
+	"branch_id" text REFERENCES "branches"("id") ON DELETE CASCADE,
+	"assigned_at" timestamp with time zone DEFAULT now() NOT NULL,
+	PRIMARY KEY ("user_id", "role_id", "tenant_id")
+);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "user_company_access" (
+	"user_id" text NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+	"tenant_id" text NOT NULL REFERENCES "tenants"("id") ON DELETE CASCADE,
+	"company_id" text NOT NULL REFERENCES "companies"("id") ON DELETE CASCADE,
+	"branch_id" text REFERENCES "branches"("id") ON DELETE CASCADE,
+	"granted_at" timestamp with time zone DEFAULT now() NOT NULL,
+	PRIMARY KEY ("user_id", "tenant_id", "company_id")
+);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "refresh_tokens" (
+	"id" text PRIMARY KEY NOT NULL,
+	"user_id" text NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+	"token_hash" text NOT NULL,
+	"expires_at" timestamp with time zone NOT NULL,
+	"is_revoked" boolean DEFAULT false NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_users_username" ON "users" USING btree ("username");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_users_email" ON "users" USING btree ("email");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_roles_tenant" ON "roles" USING btree ("tenant_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_role_permissions_role" ON "role_permissions" USING btree ("role_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_role_permissions_perm" ON "role_permissions" USING btree ("permission_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_user_roles_user" ON "user_roles" USING btree ("user_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_user_company_user" ON "user_company_access" USING btree ("user_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_refresh_tokens_user" ON "refresh_tokens" USING btree ("user_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_refresh_tokens_hash" ON "refresh_tokens" USING btree ("token_hash");

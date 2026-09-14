@@ -5,6 +5,9 @@ import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 
 import healthRouter from "./server/routes/health";
+import { authRouter } from "./server/routes/auth";
+import { usersRouter } from "./server/routes/users";
+import { rolesRouter } from "./server/routes/roles";
 import accountsRouter from "./server/routes/accounts";
 import journalEntriesRouter from "./server/routes/journalEntries";
 import reportsRouter from "./server/routes/reports";
@@ -14,6 +17,7 @@ import inventoryRouter from "./server/routes/inventory";
 import salesRouter from "./server/routes/sales";
 import purchasesRouter from "./server/routes/purchases";
 import { errorHandler } from "./server/middleware/errorHandler";
+
 
 dotenv.config();
 
@@ -73,7 +77,12 @@ async function startServer() {
     }
   });
 
-  // NOVARO ERP Phase 2A Modular Routes
+  // NOVARO ERP Phase 2D Identity, Auth & RBAC Routes
+  app.use("/api/auth", authRouter);
+  app.use("/api/v1/users", usersRouter);
+  app.use("/api/v1/roles", rolesRouter);
+
+  // NOVARO ERP Phase 2A-2C Modular Domain Routes
   app.use("/api", healthRouter);
   app.use("/api/v1/accounts", accountsRouter);
   app.use("/api/v1/journal-entries", journalEntriesRouter);
@@ -83,6 +92,7 @@ async function startServer() {
   app.use("/api/v1/inventory", inventoryRouter);
   app.use("/api/v1/sales", salesRouter);
   app.use("/api/v1/purchases", purchasesRouter);
+
 
   // Simulated local ERPNext Database & REST Client endpoint
   app.post("/api/erpnext/simulate", (req, res) => {

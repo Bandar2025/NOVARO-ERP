@@ -11,7 +11,9 @@ export type ERPResource =
   | "suppliers"
   | "reports"
   | "settings"
-  | "audit";
+  | "audit"
+  | "users"
+  | "roles";
 
 export type ERPAction =
   | "create"
@@ -23,7 +25,8 @@ export type ERPAction =
   | "approve"
   | "adjust"
   | "close_period"
-  | "export";
+  | "export"
+  | "assign";
 
 export type ERPPermission = `${ERPResource}:${ERPAction}`;
 
@@ -51,7 +54,9 @@ export const StandardRoles: Record<string, ERPRole> = {
       "suppliers:create", "suppliers:read", "suppliers:update", "suppliers:delete",
       "reports:read", "reports:export",
       "settings:read", "settings:update",
-      "audit:read"
+      "audit:read",
+      "users:create", "users:read", "users:update", "users:delete", "users:assign",
+      "roles:create", "roles:read", "roles:update", "roles:delete", "roles:assign"
     ]
   },
   CHIEF_ACCOUNTANT: {
@@ -92,19 +97,33 @@ export const StandardRoles: Record<string, ERPRole> = {
       "sales:create", "sales:read", "sales:post",
       "customers:read", "customers:create"
     ]
+  },
+  AUDITOR: {
+    id: "role-auditor",
+    name: "Internal Auditor",
+    nameAr: "مدقق داخلي",
+    description: "Read-only access across all operational and financial records and audit logs",
+    permissions: [
+      "journal:read", "inventory:read", "sales:read", "purchase:read", "manufacturing:read",
+      "customers:read", "suppliers:read", "reports:read", "reports:export", "audit:read",
+      "users:read", "roles:read"
+    ]
   }
 };
 
 export class RBACGuard {
-  static hasPermission(userRole: string, requiredPermission: ERPPermission): boolean {
+  static hasPermission(userRole: string, requiredPermission: ERPPermission, customPermissions?: string[]): boolean {
+    if (userRole === "ADMIN" || userRole === "System Administrator" || userRole.toLowerCase().includes("admin")) {
+      return true;
+    }
+    if (customPermissions && customPermissions.includes(requiredPermission)) {
+      return true;
+    }
     const roleKey = Object.keys(StandardRoles).find(
       k => k === userRole || StandardRoles[k].id === userRole || StandardRoles[k].name === userRole
     );
-    if (!roleKey) {
-      // Fallback for Admin
-      if (userRole.toLowerCase().includes("admin")) return true;
-      return false;
-    }
+    if (!roleKey) return false;
     return StandardRoles[roleKey].permissions.includes(requiredPermission);
   }
 }
+

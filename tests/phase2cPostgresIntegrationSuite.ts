@@ -385,28 +385,26 @@ async function runTests() {
     report("Tenant Isolation inside UoW", false, err.message);
   }
 
-  // 8. Document Sequence Concurrency
+  // 8. Document Sequence Concurrency (20 Concurrent Transactions)
   try {
-    // Run two concurrent document sequence requests on PostgreSQL
-    const [seq1, seq2] = await Promise.all([
-      uowFactory.run(async (uow) => {
-        return await uow.documentSequences.getNextSequence({ documentType: "INV", fiscalYearId: "2026" }, tenantA);
-      }, tenantA),
+    // Run 20 concurrent document sequence requests on PostgreSQL
+    const tasks = Array.from({ length: 20 }, () =>
       uowFactory.run(async (uow) => {
         return await uow.documentSequences.getNextSequence({ documentType: "INV", fiscalYearId: "2026" }, tenantA);
       }, tenantA)
-    ]);
+    );
 
-    const seqsAreUnique = seq1 !== seq2 && Math.abs(seq1 - seq2) === 1;
-    
+    const seqResults = await Promise.all(tasks);
+    const uniqueSeqs = new Set(seqResults);
+
     // Check PostgreSQL stored sequence counter
     const seqRow = await db.select().from(documentSequencesTable).where(eq(documentSequencesTable.id, `seq-${tenantA.tenantId}-${tenantA.companyId}-branch-pg-a-INV-2026`));
     const dbLastSeq = seqRow.length > 0 ? seqRow[0].lastSequence : 0;
 
-    const sequenceConcurrencyVerified = seqsAreUnique && dbLastSeq === Math.max(seq1, seq2);
-    report("Document Sequence Concurrency", sequenceConcurrencyVerified, `Concurrent requests allocated unique numbers (${seq1}, ${seq2}); PostgreSQL counter = ${dbLastSeq}`);
+    const sequenceConcurrencyVerified = seqResults.length === 20 && uniqueSeqs.size === 20 && dbLastSeq === Math.max(...seqResults);
+    report("Document Sequence Concurrency (20 Concurrent Tx)", sequenceConcurrencyVerified, `20 concurrent requests allocated 20 unique numbers; PostgreSQL counter = ${dbLastSeq}`);
   } catch (err: any) {
-    report("Document Sequence Concurrency", false, err.message);
+    report("Document Sequence Concurrency (20 Concurrent Tx)", false, err.message);
   }
 
   // 9. Document Sequence Rollback Semantics
@@ -483,6 +481,36 @@ async function runTests() {
     report("Concurrent Inventory Issue", stockInvariantVerified, `Pessimistic locking enforced non-negative stock: 1 tx succeeded (stock=${finalStock}), 1 tx rejected with INSUFFICIENT_STOCK`);
   } catch (err: any) {
     report("Concurrent Inventory Issue", false, err.message);
+  }
+
+  // 10b. PostgreSQL Row Locking Mechanics Verification (FOR UPDATE Blocking)
+  try {
+    let txBBlockedDuration = 0;
+
+    const txAPromise = uowFactory.run(async (uow) => {
+      await uow.inventory.getItemByIdForUpdate("ITEM-PG-COFFEE", tenantA);
+      // Hold the row lock for 80ms in PostgreSQL
+      await new Promise((res) => setTimeout(res, 80));
+      return "TX_A_DONE";
+    }, tenantA);
+
+    // Wait 10ms so Tx A starts first and acquires the lock
+    await new Promise((res) => setTimeout(res, 10));
+
+    const startTimeB = Date.now();
+    const txBPromise = uowFactory.run(async (uow) => {
+      await uow.inventory.getItemByIdForUpdate("ITEM-PG-COFFEE", tenantA);
+      return "TX_B_DONE";
+    }, tenantA);
+
+    await Promise.all([txAPromise, txBPromise]);
+    txBBlockedDuration = Date.now() - startTimeB;
+
+    // Tx B must have waited at least ~50ms for Tx A to release the row lock
+    const rowLockingProven = txBBlockedDuration >= 40;
+    report("PostgreSQL Row Locking Mechanics", rowLockingProven, `Tx B blocked on FOR UPDATE row lock for ${txBBlockedDuration}ms until Tx A committed`);
+  } catch (err: any) {
+    report("PostgreSQL Row Locking Mechanics", false, err.message);
   }
 
   // 11. Fiscal Period Concurrency

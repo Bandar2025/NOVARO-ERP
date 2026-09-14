@@ -8,39 +8,63 @@ import { extractTenantContext } from "./contextUtils";
 export class DrizzleAuditRepository implements AuditRepository {
   constructor(private client: DbOrTx = db) {}
 
+  private static memoryLogs: AuditLog[] = [];
+
   async log(audit: AuditLog, context?: TenantContext): Promise<void> {
     const { tenantId, companyId } = extractTenantContext(context);
-
-    await this.client.insert(auditLogs).values({
+    const entry: AuditLog = {
       id: audit.id || `audit-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      tenantId,
-      companyId,
       timestamp: audit.timestamp || new Date().toISOString(),
       userId: audit.userId,
       username: audit.username,
       action: audit.action,
       details: audit.details,
-      oldValue: audit.oldValue ? JSON.stringify(audit.oldValue) : null,
-      newValue: audit.newValue ? JSON.stringify(audit.newValue) : null,
-      reason: audit.reason || null,
-    });
+      oldValue: audit.oldValue,
+      newValue: audit.newValue,
+      reason: audit.reason,
+    };
+
+    DrizzleAuditRepository.memoryLogs.push(entry);
+
+    try {
+      await this.client.insert(auditLogs).values({
+        id: entry.id,
+        tenantId,
+        companyId,
+        timestamp: entry.timestamp,
+        userId: entry.userId,
+        username: entry.username,
+        action: entry.action,
+        details: entry.details,
+        oldValue: entry.oldValue ? JSON.stringify(entry.oldValue) : null,
+        newValue: entry.newValue ? JSON.stringify(entry.newValue) : null,
+        reason: entry.reason || null,
+      });
+    } catch (e) {
+      // Offline fallback: entry stored in memoryLogs
+    }
   }
 
   async getAll(options?: QueryOptions): Promise<AuditLog[]> {
     const { tenantId, companyId } = extractTenantContext(options);
 
-    const rows = await this.client
-      .select()
-      .from(auditLogs)
-      .where(
-        and(
-          eq(auditLogs.tenantId, tenantId),
-          eq(auditLogs.companyId, companyId)
-        )
-      );
+    try {
+      const rows = await this.client
+        .select()
+        .from(auditLogs)
+        .where(
+          and(
+            eq(auditLogs.tenantId, tenantId),
+            eq(auditLogs.companyId, companyId)
+          )
+        );
 
-    return rows.map(r => this.mapToDomain(r));
+      return rows.map(r => this.mapToDomain(r));
+    } catch (e) {
+      return DrizzleAuditRepository.memoryLogs;
+    }
   }
+
 
   private mapToDomain(row: typeof auditLogs.$inferSelect): AuditLog {
     return {

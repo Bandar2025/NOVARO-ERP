@@ -69,30 +69,23 @@ export class DrizzlePurchaseRepository implements PurchaseRepository {
     return result;
   }
 
+  private async executeTx<T>(fn: (txClient: any) => Promise<T>): Promise<T> {
+    if (typeof (this.client as any).transaction === "function") {
+      return await (this.client as any).transaction(fn);
+    }
+    return await fn(this.client);
+  }
+
   async save(po: PurchaseOrder, context?: TenantContext): Promise<void> {
     const { tenantId, companyId } = extractTenantContext(context);
 
-    await this.client
-      .insert(purchaseOrders)
-      .values({
-        id: po.id,
-        tenantId,
-        companyId,
-        supplierId: po.supplierId,
-        supplierName: po.supplierName,
-        date: po.date,
-        status: po.status,
-        workflowStatus: po.workflowStatus || (po.status === "Received" ? "Posted" : "Draft"),
-        currency: po.currency || "SAR",
-        exchangeRate: (po.exchangeRate ?? 1).toFixed(6),
-        subtotal: (po.subtotal ?? 0).toFixed(4),
-        taxAmount: (po.taxAmount ?? 0).toFixed(4),
-        totalAmount: (po.totalAmount ?? 0).toFixed(4),
-        updatedAt: new Date(),
-      })
-      .onConflictDoUpdate({
-        target: purchaseOrders.id,
-        set: {
+    await this.executeTx(async (tx) => {
+      await tx
+        .insert(purchaseOrders)
+        .values({
+          id: po.id,
+          tenantId,
+          companyId,
           supplierId: po.supplierId,
           supplierName: po.supplierName,
           date: po.date,
@@ -104,35 +97,51 @@ export class DrizzlePurchaseRepository implements PurchaseRepository {
           taxAmount: (po.taxAmount ?? 0).toFixed(4),
           totalAmount: (po.totalAmount ?? 0).toFixed(4),
           updatedAt: new Date(),
-        },
-      });
+        })
+        .onConflictDoUpdate({
+          target: purchaseOrders.id,
+          set: {
+            supplierId: po.supplierId,
+            supplierName: po.supplierName,
+            date: po.date,
+            status: po.status,
+            workflowStatus: po.workflowStatus || (po.status === "Received" ? "Posted" : "Draft"),
+            currency: po.currency || "SAR",
+            exchangeRate: (po.exchangeRate ?? 1).toFixed(6),
+            subtotal: (po.subtotal ?? 0).toFixed(4),
+            taxAmount: (po.taxAmount ?? 0).toFixed(4),
+            totalAmount: (po.totalAmount ?? 0).toFixed(4),
+            updatedAt: new Date(),
+          },
+        });
 
-    // Replace items
-    await this.client
-      .delete(purchaseOrderItems)
-      .where(
-        and(
-          eq(purchaseOrderItems.purchaseOrderId, po.id),
-          eq(purchaseOrderItems.tenantId, tenantId),
-          eq(purchaseOrderItems.companyId, companyId)
-        )
-      );
+      // Replace items
+      await tx
+        .delete(purchaseOrderItems)
+        .where(
+          and(
+            eq(purchaseOrderItems.purchaseOrderId, po.id),
+            eq(purchaseOrderItems.tenantId, tenantId),
+            eq(purchaseOrderItems.companyId, companyId)
+          )
+        );
 
-    if (po.items && po.items.length > 0) {
-      await this.client.insert(purchaseOrderItems).values(
-        po.items.map((it, idx) => ({
-          id: `${po.id}-item-${idx + 1}`,
-          tenantId,
-          companyId,
-          purchaseOrderId: po.id,
-          itemId: it.itemId,
-          itemName: it.itemName,
-          quantity: (it.quantity ?? 0).toFixed(4),
-          price: (it.price ?? 0).toFixed(4),
-          total: (it.total ?? 0).toFixed(4),
-        }))
-      );
-    }
+      if (po.items && po.items.length > 0) {
+        await tx.insert(purchaseOrderItems).values(
+          po.items.map((it, idx) => ({
+            id: `${po.id}-item-${idx + 1}`,
+            tenantId,
+            companyId,
+            purchaseOrderId: po.id,
+            itemId: it.itemId,
+            itemName: it.itemName,
+            quantity: (it.quantity ?? 0).toFixed(4),
+            price: (it.price ?? 0).toFixed(4),
+            total: (it.total ?? 0).toFixed(4),
+          }))
+        );
+      }
+    });
   }
 
   async exists(id: string, context?: TenantContext): Promise<boolean> {

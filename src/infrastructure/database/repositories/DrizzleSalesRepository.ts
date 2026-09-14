@@ -69,31 +69,23 @@ export class DrizzleSalesRepository implements SalesRepository {
     return result;
   }
 
+  private async executeTx<T>(fn: (txClient: any) => Promise<T>): Promise<T> {
+    if (typeof (this.client as any).transaction === "function") {
+      return await (this.client as any).transaction(fn);
+    }
+    return await fn(this.client);
+  }
+
   async save(invoice: SalesInvoice, context?: TenantContext): Promise<void> {
     const { tenantId, companyId } = extractTenantContext(context);
 
-    await this.client
-      .insert(salesInvoices)
-      .values({
-        id: invoice.id,
-        tenantId,
-        companyId,
-        customerId: invoice.customerId,
-        customerName: invoice.customerName,
-        date: invoice.date,
-        status: invoice.status,
-        workflowStatus: invoice.workflowStatus || (invoice.status === "Paid" ? "Posted" : "Draft"),
-        type: invoice.type || "Wholesale",
-        currency: invoice.currency || "SAR",
-        exchangeRate: (invoice.exchangeRate ?? 1).toFixed(6),
-        subtotal: (invoice.subtotal ?? 0).toFixed(4),
-        taxAmount: (invoice.taxAmount ?? 0).toFixed(4),
-        totalAmount: (invoice.totalAmount ?? 0).toFixed(4),
-        updatedAt: new Date(),
-      })
-      .onConflictDoUpdate({
-        target: salesInvoices.id,
-        set: {
+    await this.executeTx(async (tx) => {
+      await tx
+        .insert(salesInvoices)
+        .values({
+          id: invoice.id,
+          tenantId,
+          companyId,
           customerId: invoice.customerId,
           customerName: invoice.customerName,
           date: invoice.date,
@@ -106,36 +98,53 @@ export class DrizzleSalesRepository implements SalesRepository {
           taxAmount: (invoice.taxAmount ?? 0).toFixed(4),
           totalAmount: (invoice.totalAmount ?? 0).toFixed(4),
           updatedAt: new Date(),
-        },
-      });
+        })
+        .onConflictDoUpdate({
+          target: salesInvoices.id,
+          set: {
+            customerId: invoice.customerId,
+            customerName: invoice.customerName,
+            date: invoice.date,
+            status: invoice.status,
+            workflowStatus: invoice.workflowStatus || (invoice.status === "Paid" ? "Posted" : "Draft"),
+            type: invoice.type || "Wholesale",
+            currency: invoice.currency || "SAR",
+            exchangeRate: (invoice.exchangeRate ?? 1).toFixed(6),
+            subtotal: (invoice.subtotal ?? 0).toFixed(4),
+            taxAmount: (invoice.taxAmount ?? 0).toFixed(4),
+            totalAmount: (invoice.totalAmount ?? 0).toFixed(4),
+            updatedAt: new Date(),
+          },
+        });
 
-    // Replace items
-    await this.client
-      .delete(salesInvoiceItems)
-      .where(
-        and(
-          eq(salesInvoiceItems.salesInvoiceId, invoice.id),
-          eq(salesInvoiceItems.tenantId, tenantId),
-          eq(salesInvoiceItems.companyId, companyId)
-        )
-      );
+      // Replace items
+      await tx
+        .delete(salesInvoiceItems)
+        .where(
+          and(
+            eq(salesInvoiceItems.salesInvoiceId, invoice.id),
+            eq(salesInvoiceItems.tenantId, tenantId),
+            eq(salesInvoiceItems.companyId, companyId)
+          )
+        );
 
-    if (invoice.items && invoice.items.length > 0) {
-      await this.client.insert(salesInvoiceItems).values(
-        invoice.items.map((it, idx) => ({
-          id: `${invoice.id}-item-${idx + 1}`,
-          tenantId,
-          companyId,
-          salesInvoiceId: invoice.id,
-          itemId: it.itemId,
-          itemName: it.itemName,
-          quantity: (it.quantity ?? 0).toFixed(4),
-          price: (it.price ?? 0).toFixed(4),
-          total: (it.total ?? 0).toFixed(4),
-          cogsAmount: "0.0000",
-        }))
-      );
-    }
+      if (invoice.items && invoice.items.length > 0) {
+        await tx.insert(salesInvoiceItems).values(
+          invoice.items.map((it, idx) => ({
+            id: `${invoice.id}-item-${idx + 1}`,
+            tenantId,
+            companyId,
+            salesInvoiceId: invoice.id,
+            itemId: it.itemId,
+            itemName: it.itemName,
+            quantity: (it.quantity ?? 0).toFixed(4),
+            price: (it.price ?? 0).toFixed(4),
+            total: (it.total ?? 0).toFixed(4),
+            cogsAmount: "0.0000",
+          }))
+        );
+      }
+    });
   }
 
   async exists(id: string, context?: TenantContext): Promise<boolean> {

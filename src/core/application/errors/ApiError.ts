@@ -6,7 +6,15 @@ export type ApiErrorCode =
   | "POSTED_ENTRY_IMMUTABLE"
   | "INSUFFICIENT_STOCK"
   | "JOURNAL_ENTRY_UNBALANCED"
-  | "INTERNAL_ERROR";
+  | "INTERNAL_ERROR"
+  | "UNAUTHORIZED"
+  | "FORBIDDEN"
+  | "TOKEN_EXPIRED"
+  | "INVALID_TOKEN"
+  | "INVALID_REFRESH_TOKEN"
+  | "REVOKED_REFRESH_TOKEN"
+  | "MISSING_TOKEN";
+
 
 export interface ApiErrorDetail {
   field?: string;

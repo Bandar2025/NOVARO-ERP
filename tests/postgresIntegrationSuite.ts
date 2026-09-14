@@ -13,7 +13,7 @@ import { companies } from "../src/infrastructure/database/schema/companies";
 import { branches } from "../src/infrastructure/database/schema/branches";
 import { AppError } from "../src/core/application/errors/ApiError";
 
-const DB_URL = process.env.DATABASE_URL || "postgres://postgres@127.0.0.1:5432/novaro_erp";
+const DB_URL = process.env.DATABASE_URL || "postgres://node@localhost:5432/novaro_erp";
 
 export interface TestResult {
   name: string;
