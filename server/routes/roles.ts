@@ -1,23 +1,24 @@
 import { Router, Response } from "express";
-import { eq } from "drizzle-orm";
-import { db } from "../../src/infrastructure/database/client/db";
-
+import { eq, and } from "drizzle-orm";
+import { db, ensureInitialized } from "../../src/infrastructure/database/client/db";
 import { roles, permissions, rolePermissions } from "../../src/infrastructure/database/schema";
 import { AuthRequest, authenticateToken, requirePermission, getAuthTenantContext } from "../middleware/authMiddleware";
 import { StandardRoles } from "../../src/core/domain/rbac/Permissions";
+import crypto from "crypto";
 
 export const rolesRouter = Router();
 
 rolesRouter.use(authenticateToken);
 
 /**
- * GET /api/roles
+ * GET /api/v1/roles
  */
 rolesRouter.get("/", requirePermission("roles:read"), async (req: AuthRequest, res: Response) => {
   try {
+    await ensureInitialized();
     const tenantCtx = getAuthTenantContext(req);
 
-    // 1. Standard Roles
+    // 1. Standard System Roles
     const systemRoles = Object.values(StandardRoles).map(r => ({
       id: r.id,
       name: r.name,
@@ -27,7 +28,7 @@ rolesRouter.get("/", requirePermission("roles:read"), async (req: AuthRequest, r
       permissions: r.permissions,
     }));
 
-    // 2. Custom Roles from DB
+    // 2. Custom Tenant Roles from DB
     let customRoles: any[] = [];
     try {
       const dbRoles = await db.select().from(roles).where(eq(roles.tenantId, tenantCtx.tenantId));
@@ -43,7 +44,7 @@ rolesRouter.get("/", requirePermission("roles:read"), async (req: AuthRequest, r
           name: dr.name,
           code: dr.code,
           description: dr.description,
-          isSystemRole: dr.isSystemRole,
+          isSystemRole: false,
           permissions: rpList.map(rp => rp.code),
         });
       }
@@ -56,10 +57,11 @@ rolesRouter.get("/", requirePermission("roles:read"), async (req: AuthRequest, r
 });
 
 /**
- * POST /api/roles
+ * POST /api/v1/roles
  */
 rolesRouter.post("/", requirePermission("roles:create"), async (req: AuthRequest, res: Response) => {
   try {
+    await ensureInitialized();
     const tenantCtx = getAuthTenantContext(req);
     const { name, code, description, permissionCodes } = req.body;
 
@@ -68,15 +70,15 @@ rolesRouter.post("/", requirePermission("roles:create"), async (req: AuthRequest
       return;
     }
 
-    const newRoleId = `role_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const newRoleId = `role_${crypto.randomUUID()}`;
 
     await db.insert(roles).values({
       id: newRoleId,
       tenantId: tenantCtx.tenantId,
+      companyId: tenantCtx.companyId,
       name,
       code,
       description,
-      isSystemRole: false,
     });
 
     if (Array.isArray(permissionCodes)) {

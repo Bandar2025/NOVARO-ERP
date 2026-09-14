@@ -17,7 +17,7 @@ import inventoryRouter from "./server/routes/inventory";
 import salesRouter from "./server/routes/sales";
 import purchasesRouter from "./server/routes/purchases";
 import { errorHandler } from "./server/middleware/errorHandler";
-
+import { authenticateToken, requirePermission, AuthRequest } from "./server/middleware/authMiddleware";
 
 dotenv.config();
 
@@ -50,8 +50,8 @@ async function startServer() {
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
-  // API Routes FIRST
-  app.post("/api/gemini/generate", async (req, res) => {
+  // SECURE INTERNAL AI API Endpoint
+  app.post("/api/gemini/generate", authenticateToken, async (req: AuthRequest, res) => {
     try {
       const { prompt, systemInstruction } = req.body;
       
@@ -77,6 +77,44 @@ async function startServer() {
     }
   });
 
+  // SECURE SIMULATED ERPNext Endpoint
+  app.post("/api/erpnext/simulate", authenticateToken, requirePermission("system:admin"), (req: AuthRequest, res) => {
+    if (process.env.NODE_ENV === "production") {
+      return res.status(403).json({ error: "Simulate endpoint is disabled in production mode." });
+    }
+
+    const { doctype, action, doc } = req.body;
+    
+    if (action === "insert") {
+      const simulatedName = `${doctype.replace(/\s+/g, "-")}-${Math.floor(100000 + Math.random() * 900000)}`;
+      return res.json({
+        message: {
+          name: simulatedName,
+          owner: req.user?.username || "Administrator",
+          creation: new Date().toISOString(),
+          modified: new Date().toISOString(),
+          modified_by: req.user?.username || "Administrator",
+          docstatus: 0,
+          idx: 0,
+          ...doc,
+          doctype
+        }
+      });
+    }
+
+    if (action === "get_list") {
+      return res.json({
+        message: [
+          { name: "REC-2026-0001", owner: req.user?.username || "Administrator", modified: new Date().toISOString() },
+          { name: "REC-2026-0002", owner: req.user?.username || "Administrator", modified: new Date().toISOString() },
+          { name: "REC-2026-0003", owner: req.user?.username || "Administrator", modified: new Date().toISOString() }
+        ]
+      });
+    }
+
+    return res.status(400).json({ error: "Unsupported simulated action" });
+  });
+
   // NOVARO ERP Phase 2D Identity, Auth & RBAC Routes
   app.use("/api/auth", authRouter);
   app.use("/api/v1/users", usersRouter);
@@ -92,43 +130,6 @@ async function startServer() {
   app.use("/api/v1/inventory", inventoryRouter);
   app.use("/api/v1/sales", salesRouter);
   app.use("/api/v1/purchases", purchasesRouter);
-
-
-  // Simulated local ERPNext Database & REST Client endpoint
-  app.post("/api/erpnext/simulate", (req, res) => {
-    const { doctype, action, doc } = req.body;
-    
-    // Simulating ERPNext REST API endpoints: /api/resource/:doctype
-    if (action === "insert") {
-      const simulatedName = `${doctype.replace(/\s+/g, "-")}-${Math.floor(100000 + Math.random() * 900000)}`;
-      return res.json({
-        message: {
-          name: simulatedName,
-          owner: "Administrator",
-          creation: new Date().toISOString(),
-          modified: new Date().toISOString(),
-          modified_by: "Administrator",
-          docstatus: 0,
-          idx: 0,
-          ...doc,
-          doctype
-        }
-      });
-    }
-
-    if (action === "get_list") {
-      // Mocking ERPNext lists
-      return res.json({
-        message: [
-          { name: "REC-2026-0001", owner: "Administrator", modified: new Date().toISOString() },
-          { name: "REC-2026-0002", owner: "Administrator", modified: new Date().toISOString() },
-          { name: "REC-2026-0003", owner: "Administrator", modified: new Date().toISOString() }
-        ]
-      });
-    }
-
-    return res.status(400).json({ error: "Unsupported simulated action" });
-  });
 
   // Global API Error Handler
   app.use(errorHandler);
@@ -149,7 +150,7 @@ async function startServer() {
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`[ERPNext Workspace] Server running on http://localhost:${PORT}`);
+    console.log(`[NOVARO ERP Server] Running on http://localhost:${PORT}`);
   });
 }
 

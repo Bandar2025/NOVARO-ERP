@@ -6,6 +6,7 @@ export type ERPResource =
   | "inventory"
   | "sales"
   | "purchase"
+  | "purchases"
   | "manufacturing"
   | "customers"
   | "suppliers"
@@ -13,7 +14,9 @@ export type ERPResource =
   | "settings"
   | "audit"
   | "users"
-  | "roles";
+  | "roles"
+  | "accounts"
+  | "system";
 
 export type ERPAction =
   | "create"
@@ -26,7 +29,8 @@ export type ERPAction =
   | "adjust"
   | "close_period"
   | "export"
-  | "assign";
+  | "assign"
+  | "admin";
 
 export type ERPPermission = `${ERPResource}:${ERPAction}`;
 
@@ -46,6 +50,7 @@ export const StandardRoles: Record<string, ERPRole> = {
     description: "Full unconstrained administrative privileges across all modules",
     permissions: [
       "journal:create", "journal:read", "journal:update", "journal:delete", "journal:post", "journal:reverse", "journal:close_period",
+      "accounts:create", "accounts:read", "accounts:update", "accounts:delete",
       "inventory:create", "inventory:read", "inventory:update", "inventory:delete", "inventory:adjust",
       "sales:create", "sales:read", "sales:update", "sales:delete", "sales:approve", "sales:post",
       "purchase:create", "purchase:read", "purchase:update", "purchase:delete", "purchase:approve", "purchase:post",
@@ -56,7 +61,8 @@ export const StandardRoles: Record<string, ERPRole> = {
       "settings:read", "settings:update",
       "audit:read",
       "users:create", "users:read", "users:update", "users:delete", "users:assign",
-      "roles:create", "roles:read", "roles:update", "roles:delete", "roles:assign"
+      "roles:create", "roles:read", "roles:update", "roles:delete", "roles:assign",
+      "system:admin"
     ]
   },
   CHIEF_ACCOUNTANT: {
@@ -66,6 +72,7 @@ export const StandardRoles: Record<string, ERPRole> = {
     description: "Full accounting control, posting, and period locking",
     permissions: [
       "journal:create", "journal:read", "journal:post", "journal:reverse", "journal:close_period",
+      "accounts:create", "accounts:read", "accounts:update",
       "inventory:read", "inventory:adjust",
       "sales:read", "sales:post",
       "purchase:read", "purchase:post",
@@ -104,7 +111,7 @@ export const StandardRoles: Record<string, ERPRole> = {
     nameAr: "مدقق داخلي",
     description: "Read-only access across all operational and financial records and audit logs",
     permissions: [
-      "journal:read", "inventory:read", "sales:read", "purchase:read", "manufacturing:read",
+      "journal:read", "accounts:read", "inventory:read", "sales:read", "purchase:read", "manufacturing:read",
       "customers:read", "suppliers:read", "reports:read", "reports:export", "audit:read",
       "users:read", "roles:read"
     ]
@@ -126,4 +133,3 @@ export class RBACGuard {
     return StandardRoles[roleKey].permissions.includes(requiredPermission);
   }
 }
-

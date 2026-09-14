@@ -1,23 +1,23 @@
 import { Router, Response } from "express";
 import { eq, and } from "drizzle-orm";
-import { db } from "../../src/infrastructure/database/client/db";
-
-import { users } from "../../src/infrastructure/database/schema";
+import { db, ensureInitialized } from "../../src/infrastructure/database/client/db";
+import { users, companies, branches } from "../../src/infrastructure/database/schema";
 import { AuthRequest, authenticateToken, requirePermission, getAuthTenantContext } from "../middleware/authMiddleware";
 import { AuthService } from "../services/authService";
 import { DrizzleAuditRepository } from "../../src/infrastructure/database/repositories/DrizzleAuditRepository";
+import crypto from "crypto";
 
 export const usersRouter = Router();
 const auditRepo = new DrizzleAuditRepository();
 
-
 usersRouter.use(authenticateToken);
 
 /**
- * GET /api/users
+ * GET /api/v1/users
  */
 usersRouter.get("/", requirePermission("users:read"), async (req: AuthRequest, res: Response) => {
   try {
+    await ensureInitialized();
     const tenantCtx = getAuthTenantContext(req);
     const userList = await db
       .select({
@@ -29,6 +29,7 @@ usersRouter.get("/", requirePermission("users:read"), async (req: AuthRequest, r
         email: users.email,
         role: users.role,
         status: users.status,
+        failedLoginAttempts: users.failedLoginAttempts,
         isActive: users.isActive,
         lastLoginAt: users.lastLoginAt,
         createdAt: users.createdAt,
@@ -43,10 +44,12 @@ usersRouter.get("/", requirePermission("users:read"), async (req: AuthRequest, r
 });
 
 /**
- * POST /api/users
+ * POST /api/v1/users
+ * User Creation with Company/Branch validation & Privilege Escalation Prevention
  */
 usersRouter.post("/", requirePermission("users:create"), async (req: AuthRequest, res: Response) => {
   try {
+    await ensureInitialized();
     const tenantCtx = getAuthTenantContext(req);
     const { username, email, password, role, companyId, branchId } = req.body;
 
@@ -55,14 +58,41 @@ usersRouter.post("/", requirePermission("users:create"), async (req: AuthRequest
       return;
     }
 
+    // Role Escalation Prevention: Non-ADMIN cannot assign ADMIN role
+    if (role === "ADMIN" && req.user!.role !== "ADMIN") {
+      res.status(403).json({ error: { code: "ROLE_ESCALATION_DENIED", message: "Forbidden: Only Administrators can create ADMIN users.", statusCode: 403 } });
+      return;
+    }
+
+    const targetCompanyId = companyId || tenantCtx.companyId;
+    const targetBranchId = branchId || tenantCtx.branchId || null;
+
+    // Company Validation (Requirement 8)
+    if (targetCompanyId) {
+      const [comp] = await db.select().from(companies).where(and(eq(companies.id, targetCompanyId), eq(companies.tenantId, tenantCtx.tenantId)));
+      if (!comp) {
+        res.status(400).json({ error: { code: "COMPANY_MISMATCH", message: "Specified company does not belong to user tenant.", statusCode: 400 } });
+        return;
+      }
+    }
+
+    // Branch Validation (Requirement 8)
+    if (targetBranchId && targetCompanyId) {
+      const [br] = await db.select().from(branches).where(and(eq(branches.id, targetBranchId), eq(branches.companyId, targetCompanyId), eq(branches.tenantId, tenantCtx.tenantId)));
+      if (!br) {
+        res.status(400).json({ error: { code: "BRANCH_MISMATCH", message: "Specified branch does not belong to specified company.", statusCode: 400 } });
+        return;
+      }
+    }
+
     const passwordHash = await AuthService.hashPassword(password);
-    const newUserId = `usr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const newUserId = `usr_${crypto.randomUUID()}`;
 
     await db.insert(users).values({
       id: newUserId,
       tenantId: tenantCtx.tenantId,
-      companyId: companyId || tenantCtx.companyId,
-      branchId: branchId || tenantCtx.branchId || null,
+      companyId: targetCompanyId,
+      branchId: targetBranchId,
       username,
       email,
       role,
@@ -74,7 +104,7 @@ usersRouter.post("/", requirePermission("users:create"), async (req: AuthRequest
     try {
       await auditRepo.log(
         {
-          id: `audit-${Date.now()}`,
+          id: `audit-${crypto.randomUUID()}`,
           timestamp: new Date().toISOString(),
           userId: req.user!.id,
           username: req.user!.username,
@@ -85,11 +115,11 @@ usersRouter.post("/", requirePermission("users:create"), async (req: AuthRequest
       );
     } catch (e) {}
 
-
     res.status(201).json({
       id: newUserId,
       tenantId: tenantCtx.tenantId,
-      companyId: companyId || tenantCtx.companyId,
+      companyId: targetCompanyId,
+      branchId: targetBranchId,
       username,
       email,
       role,
@@ -101,13 +131,26 @@ usersRouter.post("/", requirePermission("users:create"), async (req: AuthRequest
 });
 
 /**
- * PUT /api/users/:id
+ * PUT /api/v1/users/:id
  */
 usersRouter.put("/:id", requirePermission("users:update"), async (req: AuthRequest, res: Response) => {
   try {
+    await ensureInitialized();
     const tenantCtx = getAuthTenantContext(req);
     const { id } = req.params;
     const { role, status, companyId, branchId, password } = req.body;
+
+    // Self Role Escalation Prevention: User cannot elevate own role
+    if (id === req.user!.id && role && role !== req.user!.role) {
+      res.status(403).json({ error: { code: "ROLE_ESCALATION_DENIED", message: "Forbidden: Users cannot alter their own assigned role.", statusCode: 403 } });
+      return;
+    }
+
+    // Role Escalation Prevention: Non-ADMIN cannot grant ADMIN role
+    if (role === "ADMIN" && req.user!.role !== "ADMIN") {
+      res.status(403).json({ error: { code: "ROLE_ESCALATION_DENIED", message: "Forbidden: Only Administrators can grant ADMIN role.", statusCode: 403 } });
+      return;
+    }
 
     const [existing] = await db
       .select()
@@ -119,6 +162,27 @@ usersRouter.put("/:id", requirePermission("users:update"), async (req: AuthReque
       return;
     }
 
+    const targetCompanyId = companyId || existing.companyId;
+    const targetBranchId = branchId !== undefined ? branchId : existing.branchId;
+
+    // Company Validation
+    if (companyId) {
+      const [comp] = await db.select().from(companies).where(and(eq(companies.id, companyId), eq(companies.tenantId, tenantCtx.tenantId)));
+      if (!comp) {
+        res.status(400).json({ error: { code: "COMPANY_MISMATCH", message: "Specified company does not belong to user tenant.", statusCode: 400 } });
+        return;
+      }
+    }
+
+    // Branch Validation
+    if (branchId && targetCompanyId) {
+      const [br] = await db.select().from(branches).where(and(eq(branches.id, branchId), eq(branches.companyId, targetCompanyId), eq(branches.tenantId, tenantCtx.tenantId)));
+      if (!br) {
+        res.status(400).json({ error: { code: "BRANCH_MISMATCH", message: "Specified branch does not belong to specified company.", statusCode: 400 } });
+        return;
+      }
+    }
+
     const updateFields: any = {};
     if (role) updateFields.role = role;
     if (status) {
@@ -126,7 +190,7 @@ usersRouter.put("/:id", requirePermission("users:update"), async (req: AuthReque
       updateFields.isActive = status === "ACTIVE";
     }
     if (companyId) updateFields.companyId = companyId;
-    if (branchId) updateFields.branchId = branchId;
+    if (branchId !== undefined) updateFields.branchId = branchId;
     if (password) {
       updateFields.passwordHash = await AuthService.hashPassword(password);
     }
@@ -137,7 +201,7 @@ usersRouter.put("/:id", requirePermission("users:update"), async (req: AuthReque
     try {
       await auditRepo.log(
         {
-          id: `audit-${Date.now()}`,
+          id: `audit-${crypto.randomUUID()}`,
           timestamp: new Date().toISOString(),
           userId: req.user!.id,
           username: req.user!.username,
@@ -148,8 +212,57 @@ usersRouter.put("/:id", requirePermission("users:update"), async (req: AuthReque
       );
     } catch (e) {}
 
-
     res.json({ success: true, message: "User updated successfully" });
+  } catch (err: any) {
+    res.status(500).json({ error: { code: "SERVER_ERROR", message: err.message, statusCode: 500 } });
+  }
+});
+
+/**
+ * POST /api/v1/users/:id/unlock
+ * Administrative Account Unlock
+ */
+usersRouter.post("/:id/unlock", requirePermission("users:update"), async (req: AuthRequest, res: Response) => {
+  try {
+    await ensureInitialized();
+    const tenantCtx = getAuthTenantContext(req);
+    const { id } = req.params;
+
+    const [existing] = await db
+      .select()
+      .from(users)
+      .where(and(eq(users.id, id), eq(users.tenantId, tenantCtx.tenantId)));
+
+    if (!existing) {
+      res.status(404).json({ error: { code: "NOT_FOUND", message: "User not found in tenant", statusCode: 404 } });
+      return;
+    }
+
+    await db
+      .update(users)
+      .set({
+        failedLoginAttempts: 0,
+        status: "ACTIVE",
+        isActive: true,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(users.id, id), eq(users.tenantId, tenantCtx.tenantId)));
+
+    try {
+      await auditRepo.log(
+        {
+          id: `audit-${crypto.randomUUID()}`,
+          timestamp: new Date().toISOString(),
+          userId: req.user!.id,
+          username: req.user!.username,
+          action: "USER_UNLOCKED",
+          details: `Unlocked user account ${existing.username} (${id})`,
+        },
+        tenantCtx
+      );
+    } catch (e) {}
+
+    res.json({ success: true, message: `User ${existing.username} unlocked successfully.` });
   } catch (err: any) {
     res.status(500).json({ error: { code: "SERVER_ERROR", message: err.message, statusCode: 500 } });
   }

@@ -13,8 +13,12 @@ export type ApiErrorCode =
   | "INVALID_TOKEN"
   | "INVALID_REFRESH_TOKEN"
   | "REVOKED_REFRESH_TOKEN"
-  | "MISSING_TOKEN";
-
+  | "MISSING_TOKEN"
+  | "ACCOUNT_LOCKED"
+  | "COMPANY_MISMATCH"
+  | "BRANCH_MISMATCH"
+  | "ROLE_ESCALATION_DENIED"
+  | "PERMISSION_DENIED";
 
 export interface ApiErrorDetail {
   field?: string;

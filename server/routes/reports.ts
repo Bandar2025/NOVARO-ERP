@@ -1,11 +1,14 @@
-import { Router, Request, Response, NextFunction } from "express";
+import { Router, Response, NextFunction } from "express";
 import { accountRepo, journalEntryRepo } from "../services";
 import { TrialBalanceService } from "../../src/core/application/accounting/TrialBalanceService";
+import { AuthRequest, authenticateToken, requirePermission } from "../middleware/authMiddleware";
 
 const router = Router();
 
+router.use(authenticateToken);
+
 // GET /api/v1/reports/trial-balance
-router.get("/trial-balance", async (req: Request, res: Response, next: NextFunction) => {
+router.get("/trial-balance", requirePermission("reports:read"), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const asOfDate = req.query.asOfDate as string | undefined;
     const accounts = await accountRepo.getAll();
@@ -26,7 +29,7 @@ router.get("/trial-balance", async (req: Request, res: Response, next: NextFunct
 });
 
 // GET /api/v1/reports/income-statement
-router.get("/income-statement", async (req: Request, res: Response, next: NextFunction) => {
+router.get("/income-statement", requirePermission("reports:read"), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const startDate = req.query.startDate as string | undefined;
     const endDate = req.query.endDate as string | undefined;
@@ -51,7 +54,7 @@ router.get("/income-statement", async (req: Request, res: Response, next: NextFu
 });
 
 // GET /api/v1/reports/balance-sheet
-router.get("/balance-sheet", async (req: Request, res: Response, next: NextFunction) => {
+router.get("/balance-sheet", requirePermission("reports:read"), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const asOfDate = req.query.asOfDate as string | undefined;
     const accounts = await accountRepo.getAll();

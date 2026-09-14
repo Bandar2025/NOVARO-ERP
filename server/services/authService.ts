@@ -1,18 +1,27 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import crypto from "crypto";
 import { eq, and } from "drizzle-orm";
-import { db } from "../../src/infrastructure/database/client/db";
+import { db, pool, ensureInitialized } from "../../src/infrastructure/database/client/db";
 
-import { users, refreshTokens, roles, rolePermissions, permissions, userRoles, userCompanyAccess } from "../../src/infrastructure/database/schema";
+import { users, refreshTokens, userRoles, rolePermissions, permissions, userCompanyAccess } from "../../src/infrastructure/database/schema";
 import { AuthenticatedUser, AccessTokenPayload, RefreshTokenPayload, AuthSession } from "../../src/core/domain/auth/AuthToken";
 import { ERPPermission, StandardRoles } from "../../src/core/domain/rbac/Permissions";
 import { AppError } from "../../src/core/application/errors/ApiError";
 
+export function validateAuthConfig(): { jwtSecret: string; jwtRefreshSecret: string } {
+  const jwtSecret = process.env.JWT_SECRET;
+  const jwtRefreshSecret = process.env.JWT_REFRESH_SECRET;
 
-const JWT_SECRET = process.env.JWT_SECRET || "novaro-production-jwt-secret-key-2026-secure-default";
-const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || "novaro-production-jwt-refresh-secret-key-2026-secure-default";
-const ACCESS_TOKEN_EXPIRY = process.env.JWT_EXPIRES_IN || "15m";
-const REFRESH_TOKEN_EXPIRY = process.env.JWT_REFRESH_EXPIRES_IN || "7d";
+  if (!jwtSecret || jwtSecret.length < 32) {
+    throw new Error("SECURITY CONFIG ERROR: JWT_SECRET must be defined in environment and be at least 32 characters long.");
+  }
+  if (!jwtRefreshSecret || jwtRefreshSecret.length < 32) {
+    throw new Error("SECURITY CONFIG ERROR: JWT_REFRESH_SECRET must be defined in environment and be at least 32 characters long.");
+  }
+
+  return { jwtSecret, jwtRefreshSecret };
+}
 
 export class AuthService {
   /**
@@ -25,7 +34,6 @@ export class AuthService {
     const salt = await bcrypt.genSalt(10);
     return bcrypt.hash(password, salt);
   }
-
 
   /**
    * Verify plain text password against hashed password
@@ -51,8 +59,9 @@ export class AuthService {
       StandardRoles.ADMIN.permissions.forEach(p => permSet.add(p));
     }
 
-    // 2. Custom Role Permissions from DB (if present)
+    // 2. Custom Role Permissions from DB
     try {
+      await ensureInitialized();
       const customUserRoles = await db
         .select({ roleId: userRoles.roleId })
         .from(userRoles)
@@ -70,7 +79,7 @@ export class AuthService {
         }
       }
     } catch (e) {
-      // Graceful fallback if database connection or schema is isolated in test mode
+      // Permission lookup fails -> Fail closed
     }
 
     return Array.from(permSet);
@@ -84,6 +93,7 @@ export class AuthService {
     if (defaultCompanyId) allowed.add(defaultCompanyId);
 
     try {
+      await ensureInitialized();
       const userComps = await db
         .select({ companyId: userCompanyAccess.companyId })
         .from(userCompanyAccess)
@@ -91,19 +101,20 @@ export class AuthService {
 
       userComps.forEach(uc => allowed.add(uc.companyId));
     } catch (e) {
-      // Fallback to default company
+      // Fail closed
     }
 
     return Array.from(allowed);
   }
 
-  private static revokedTokensSet = new Set<string>();
-
   /**
-   * Generate Access and Refresh JWT Tokens
+   * Generate Access and Refresh JWT Tokens with cryptographically secure random identifiers
    */
-
   static async generateTokens(user: AuthenticatedUser): Promise<{ accessToken: string; refreshToken: string; expiresIn: number }> {
+    const { jwtSecret, jwtRefreshSecret } = validateAuthConfig();
+    const accessTokenId = `at_${crypto.randomUUID()}`;
+    const refreshTokenId = `rf_${crypto.randomUUID()}`;
+
     const accessPayload: AccessTokenPayload = {
       sub: user.id,
       tenantId: user.tenantId,
@@ -113,36 +124,32 @@ export class AuthService {
       email: user.email,
       role: user.role,
       permissions: user.permissions,
-      jti: `at_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      jti: accessTokenId,
     };
 
+    const accessToken = jwt.sign(accessPayload, jwtSecret, { expiresIn: "15m" });
 
-    const accessToken = jwt.sign(accessPayload, JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRY as any });
-
-    const refreshTokenId = `rf_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     const refreshPayload: RefreshTokenPayload = {
       sub: user.id,
       tenantId: user.tenantId,
       tokenId: refreshTokenId,
     };
 
-    const refreshToken = jwt.sign(refreshPayload, JWT_REFRESH_SECRET, { expiresIn: REFRESH_TOKEN_EXPIRY as any });
+    const refreshToken = jwt.sign(refreshPayload, jwtRefreshSecret, { expiresIn: "7d" });
 
-    // Store refresh token hash in DB
-    const tokenHash = await this.hashPassword(refreshToken);
+    // Hash refresh token for secure database storage
+    const tokenHash = crypto.createHash("sha256").update(refreshToken).digest("hex");
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
-    try {
-      await db.insert(refreshTokens).values({
-        id: refreshTokenId,
-        userId: user.id,
-        tokenHash,
-        expiresAt,
-        isRevoked: false,
-      });
-    } catch (e) {
-      // In non-DB environment, token is still cryptographically signed
-    }
+    await ensureInitialized();
+    await db.insert(refreshTokens).values({
+      id: refreshTokenId,
+      userId: user.id,
+      tenantId: user.tenantId,
+      tokenHash,
+      expiresAt,
+      isRevoked: false,
+    });
 
     return {
       accessToken,
@@ -155,8 +162,9 @@ export class AuthService {
    * Verify Access Token and returning AuthenticatedUser
    */
   static verifyAccessToken(token: string): AuthenticatedUser {
+    const { jwtSecret } = validateAuthConfig();
     try {
-      const decoded = jwt.verify(token, JWT_SECRET) as AccessTokenPayload;
+      const decoded = jwt.verify(token, jwtSecret) as AccessTokenPayload;
       return {
         id: decoded.sub,
         tenantId: decoded.tenantId,
@@ -177,75 +185,67 @@ export class AuthService {
   }
 
   /**
-   * Verify Refresh Token and Issue New Tokens (Token Rotation)
+   * Verify Refresh Token and Issue New Tokens with Atomic PostgreSQL Rotation
    */
   static async refreshSession(refreshToken: string): Promise<AuthSession> {
+    const { jwtRefreshSecret } = validateAuthConfig();
     let decoded: RefreshTokenPayload;
     try {
-      decoded = jwt.verify(refreshToken, JWT_REFRESH_SECRET) as RefreshTokenPayload;
+      decoded = jwt.verify(refreshToken, jwtRefreshSecret) as RefreshTokenPayload;
     } catch (err: any) {
       throw new AppError("INVALID_REFRESH_TOKEN", "Invalid or expired refresh token", 401);
     }
 
-    if (AuthService.revokedTokensSet.has(decoded.tokenId)) {
-      throw new AppError("REVOKED_REFRESH_TOKEN", "Refresh token has been revoked", 401);
+    await ensureInitialized();
+
+    // 1. Check refresh token record in PostgreSQL DB
+    const [storedToken] = await db
+      .select()
+      .from(refreshTokens)
+      .where(
+        and(
+          eq(refreshTokens.id, decoded.tokenId),
+          eq(refreshTokens.userId, decoded.sub),
+          eq(refreshTokens.tenantId, decoded.tenantId)
+        )
+      );
+
+    if (!storedToken) {
+      throw new AppError("INVALID_REFRESH_TOKEN", "Refresh token record not found", 401);
     }
 
-    // Check DB for revocation if DB is present
-    try {
-      const [storedToken] = await db
-        .select()
-        .from(refreshTokens)
-        .where(eq(refreshTokens.id, decoded.tokenId));
-
-      if (storedToken && storedToken.isRevoked) {
-        AuthService.revokedTokensSet.add(decoded.tokenId);
-        throw new AppError("REVOKED_REFRESH_TOKEN", "Refresh token has been revoked", 401);
-      }
-
-      // Revoke old refresh token (rotation)
-      if (storedToken) {
-        await db
-          .update(refreshTokens)
-          .set({ isRevoked: true })
-          .where(eq(refreshTokens.id, decoded.tokenId));
-      }
-    } catch (e) {
-      if (e instanceof AppError) throw e;
+    if (storedToken.isRevoked) {
+      throw new AppError("REVOKED_REFRESH_TOKEN", "Refresh token has been revoked or replayed", 401);
     }
 
-    // Mark as revoked in memory for token rotation
-    AuthService.revokedTokensSet.add(decoded.tokenId);
+    if (new Date() > new Date(storedToken.expiresAt)) {
+      throw new AppError("INVALID_REFRESH_TOKEN", "Refresh token has expired", 401);
+    }
 
-    // Fetch user details
-    let userRecord: any;
-    try {
-      const [rec] = await db
-        .select()
-        .from(users)
-        .where(and(eq(users.id, decoded.sub), eq(users.tenantId, decoded.tenantId)));
-      userRecord = rec;
-    } catch (e) {}
+    // 2. ATOMIC ROTATION IN POSTGRESQL: Atomically revoke old refresh token
+    const updateRes = await pool.query(
+      `UPDATE refresh_tokens SET is_revoked = true WHERE id = $1 AND is_revoked = false RETURNING id`,
+      [decoded.tokenId]
+    );
+
+    if (!updateRes.rows || updateRes.rows.length === 0) {
+      // Replay detected
+      throw new AppError("REVOKED_REFRESH_TOKEN", "Refresh token has been revoked or replayed", 401);
+    }
+
+    // 3. FAIL CLOSED: Look up user in PostgreSQL
+    const [userRecord] = await db
+      .select()
+      .from(users)
+      .where(and(eq(users.id, decoded.sub), eq(users.tenantId, decoded.tenantId)));
 
     if (!userRecord) {
-      userRecord = {
-        id: decoded.sub,
-        tenantId: decoded.tenantId,
-        companyId: "comp-sec-a",
-        branchId: "branch-sec-a",
-        username: "admin_sec",
-        email: "admin@sec.com",
-        role: "ADMIN",
-        status: "ACTIVE",
-        isActive: true,
-      };
+      throw new AppError("UNAUTHORIZED", "User record not found in database. Fail closed.", 401);
     }
 
     if (!userRecord.isActive || userRecord.status !== "ACTIVE") {
-      throw new AppError("UNAUTHORIZED", "User account is disabled or inactive", 401);
+      throw new AppError("ACCOUNT_LOCKED", `User account is inactive or locked (${userRecord.status})`, 403);
     }
-
-
 
     const perms = await this.getUserPermissions(userRecord.id, userRecord.role, userRecord.tenantId);
     const allowedCompanies = await this.getUserAllowedCompanies(userRecord.id, userRecord.tenantId, userRecord.companyId || "");
@@ -258,7 +258,7 @@ export class AuthService {
       username: userRecord.username,
       email: userRecord.email,
       role: userRecord.role,
-      status: (userRecord.status as any) || "ACTIVE",
+      status: userRecord.status as any,
       permissions: perms,
       allowedCompanies,
     };
@@ -274,19 +274,19 @@ export class AuthService {
   }
 
   /**
-   * Revoke refresh token
+   * Revoke refresh token in PostgreSQL
    */
   static async revokeRefreshToken(refreshToken: string): Promise<void> {
+    const { jwtRefreshSecret } = validateAuthConfig();
     try {
-      const decoded = jwt.verify(refreshToken, JWT_REFRESH_SECRET) as RefreshTokenPayload;
-      AuthService.revokedTokensSet.add(decoded.tokenId);
+      const decoded = jwt.verify(refreshToken, jwtRefreshSecret) as RefreshTokenPayload;
+      await ensureInitialized();
       await db
         .update(refreshTokens)
         .set({ isRevoked: true })
         .where(eq(refreshTokens.id, decoded.tokenId));
     } catch (e) {
-      // Ignore invalid token on revoke
+      // Ignore token decoding error on logout
     }
   }
-
 }

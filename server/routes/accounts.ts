@@ -1,10 +1,13 @@
-import { Router, Request, Response, NextFunction } from "express";
+import { Router, Response, NextFunction } from "express";
 import { accountService } from "../services";
+import { AuthRequest, authenticateToken, requirePermission } from "../middleware/authMiddleware";
 
 const router = Router();
 
+router.use(authenticateToken);
+
 // GET /api/v1/accounts
-router.get("/", async (_req: Request, res: Response, next: NextFunction) => {
+router.get("/", requirePermission("accounts:read"), async (_req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const accounts = await accountService.getAll();
     res.json({ success: true, data: accounts });
@@ -14,7 +17,7 @@ router.get("/", async (_req: Request, res: Response, next: NextFunction) => {
 });
 
 // GET /api/v1/accounts/:id
-router.get("/:id", async (req: Request, res: Response, next: NextFunction) => {
+router.get("/:id", requirePermission("accounts:read"), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const account = await accountService.getById(req.params.id);
     res.json({ success: true, data: account });
@@ -24,7 +27,7 @@ router.get("/:id", async (req: Request, res: Response, next: NextFunction) => {
 });
 
 // POST /api/v1/accounts
-router.post("/", async (req: Request, res: Response, next: NextFunction) => {
+router.post("/", requirePermission("accounts:create"), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const created = await accountService.create(req.body);
     res.status(201).json({ success: true, data: created });

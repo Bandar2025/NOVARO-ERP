@@ -6,6 +6,9 @@ export interface TenantContext {
 }
 
 export interface QueryOptions {
+  tenantId?: string;
+  companyId?: string;
+  branchId?: string;
   context?: TenantContext;
   limit?: number;
   offset?: number;

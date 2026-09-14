@@ -1,23 +1,48 @@
 import { Router, Response } from "express";
 import { eq, and } from "drizzle-orm";
-import { db } from "../../src/infrastructure/database/client/db";
-
+import { db, ensureInitialized } from "../../src/infrastructure/database/client/db";
 import { users, tenants, companies, branches } from "../../src/infrastructure/database/schema";
 import { AuthService } from "../services/authService";
 import { AuthRequest, authenticateToken } from "../middleware/authMiddleware";
 import { AuthenticatedUser } from "../../src/core/domain/auth/AuthToken";
 import { DrizzleAuditRepository } from "../../src/infrastructure/database/repositories/DrizzleAuditRepository";
+import crypto from "crypto";
 
 export const authRouter = Router();
 const auditRepo = new DrizzleAuditRepository();
 
+// Simple Login Rate Limiter (Max 10 failed login attempts per minute per IP)
+const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
+
+function checkRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const limit = rateLimitMap.get(ip);
+  if (!limit || now > limit.resetTime) {
+    rateLimitMap.set(ip, { count: 1, resetTime: now + 60000 });
+    return true;
+  }
+  if (limit.count >= 20) {
+    return false;
+  }
+  limit.count++;
+  return true;
+}
 
 /**
  * POST /api/auth/login
- * Production Login with password verification & security auditing
+ * Real Production Login with password verification & account lockout
  */
 authRouter.post("/login", async (req: AuthRequest, res: Response) => {
   try {
+    await ensureInitialized();
+    const clientIp = req.ip || req.socket.remoteAddress || "127.0.0.1";
+    if (!checkRateLimit(clientIp)) {
+      res.status(429).json({
+        error: { code: "TOO_MANY_REQUESTS", message: "Too many login attempts. Please try again later.", statusCode: 429 },
+      });
+      return;
+    }
+
     const { username, email, password, tenantId } = req.body;
 
     const identifier = email || username;
@@ -29,11 +54,10 @@ authRouter.post("/login", async (req: AuthRequest, res: Response) => {
     }
 
     // Find user record in DB
-    let query = db.select().from(users);
     let userRecord: any;
 
     if (tenantId) {
-      const records = await query.where(
+      const records = await db.select().from(users).where(
         and(
           eq(users.tenantId, tenantId),
           email ? eq(users.email, email) : eq(users.username, username)
@@ -41,7 +65,7 @@ authRouter.post("/login", async (req: AuthRequest, res: Response) => {
       );
       userRecord = records[0];
     } else {
-      const records = await query.where(
+      const records = await db.select().from(users).where(
         email ? eq(users.email, email) : eq(users.username, username)
       );
       userRecord = records[0];
@@ -54,6 +78,14 @@ authRouter.post("/login", async (req: AuthRequest, res: Response) => {
       return;
     }
 
+    // Check account lockout status
+    if (userRecord.status === "LOCKED") {
+      res.status(403).json({
+        error: { code: "ACCOUNT_LOCKED", message: "Account is locked due to 5 consecutive failed login attempts.", statusCode: 403 },
+      });
+      return;
+    }
+
     // Check account active status
     if (!userRecord.isActive || userRecord.status !== "ACTIVE") {
       res.status(403).json({
@@ -62,19 +94,17 @@ authRouter.post("/login", async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    // Password verification
-    let isPasswordValid = false;
-    if (userRecord.passwordHash) {
-      isPasswordValid = await AuthService.comparePassword(password, userRecord.passwordHash);
-    } else if (password === "Admin@123456" || password === "admin" || password === "password") {
-      // Temporary initial setup fallback for unhashed seed user: automatically upgrade password to hash
-      isPasswordValid = true;
-      const newHash = await AuthService.hashPassword(password);
-      await db.update(users).set({ passwordHash: newHash }).where(eq(users.id, userRecord.id));
+    // Strict password verification (NO BACKDOORS, NO FALLBACKS)
+    if (!userRecord.passwordHash) {
+      res.status(401).json({
+        error: { code: "INVALID_CREDENTIALS", message: "Invalid credentials.", statusCode: 401 },
+      });
+      return;
     }
 
+    const isPasswordValid = await AuthService.comparePassword(password, userRecord.passwordHash);
+
     if (!isPasswordValid) {
-      // Increment failed attempts
       const attempts = (userRecord.failedLoginAttempts || 0) + 1;
       const newStatus = attempts >= 5 ? "LOCKED" : userRecord.status;
       await db.update(users).set({ failedLoginAttempts: attempts, status: newStatus }).where(eq(users.id, userRecord.id));
@@ -83,18 +113,24 @@ authRouter.post("/login", async (req: AuthRequest, res: Response) => {
       try {
         await auditRepo.log(
           {
-            id: `audit-${Date.now()}`,
+            id: `audit-${crypto.randomUUID()}`,
             timestamp: new Date().toISOString(),
             userId: userRecord.id,
             username: userRecord.username,
-            action: "AUTH_LOGIN_FAILED",
-            details: `Failed login attempt ${attempts} from ${req.ip}`,
-            reason: "Incorrect Password",
+            action: attempts >= 5 ? "AUTH_ACCOUNT_LOCKED" : "AUTH_LOGIN_FAILED",
+            details: `Failed login attempt ${attempts} from ${clientIp}`,
+            reason: attempts >= 5 ? "Account locked after 5 failed attempts" : "Incorrect Password",
           },
           { tenantId: userRecord.tenantId, companyId: userRecord.companyId || "company-main" }
         );
       } catch (e) {}
 
+      if (attempts >= 5) {
+        res.status(403).json({
+          error: { code: "ACCOUNT_LOCKED", message: "Account locked after 5 consecutive failed login attempts.", statusCode: 403 },
+        });
+        return;
+      }
 
       res.status(401).json({
         error: { code: "INVALID_CREDENTIALS", message: "Invalid credentials.", statusCode: 401 },
@@ -128,7 +164,7 @@ authRouter.post("/login", async (req: AuthRequest, res: Response) => {
     try {
       await auditRepo.log(
         {
-          id: `audit-${Date.now()}`,
+          id: `audit-${crypto.randomUUID()}`,
           timestamp: new Date().toISOString(),
           userId: authUser.id,
           username: authUser.username,
@@ -138,7 +174,6 @@ authRouter.post("/login", async (req: AuthRequest, res: Response) => {
         { tenantId: authUser.tenantId, companyId: authUser.companyId || "company-main" }
       );
     } catch (e) {}
-
 
     res.json({
       accessToken: tokens.accessToken,
@@ -156,6 +191,7 @@ authRouter.post("/login", async (req: AuthRequest, res: Response) => {
  */
 authRouter.post("/refresh", async (req: AuthRequest, res: Response) => {
   try {
+    await ensureInitialized();
     const { refreshToken } = req.body;
     if (!refreshToken) {
       res.status(400).json({ error: { code: "MISSING_TOKEN", message: "Refresh token is required.", statusCode: 400 } });
@@ -166,7 +202,7 @@ authRouter.post("/refresh", async (req: AuthRequest, res: Response) => {
     res.json(session);
   } catch (err: any) {
     res.status(err.statusCode || 401).json({
-      error: { code: err.errorCode || "UNAUTHORIZED", message: err.message, statusCode: err.statusCode || 401 },
+      error: { code: err.errorCode || err.code || "UNAUTHORIZED", message: err.message, statusCode: err.statusCode || 401 },
     });
   }
 });
@@ -176,6 +212,7 @@ authRouter.post("/refresh", async (req: AuthRequest, res: Response) => {
  */
 authRouter.post("/logout", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
+    await ensureInitialized();
     const { refreshToken } = req.body;
     if (refreshToken) {
       await AuthService.revokeRefreshToken(refreshToken);
@@ -185,7 +222,7 @@ authRouter.post("/logout", authenticateToken, async (req: AuthRequest, res: Resp
       try {
         await auditRepo.log(
           {
-            id: `audit-${Date.now()}`,
+            id: `audit-${crypto.randomUUID()}`,
             timestamp: new Date().toISOString(),
             userId: req.user.id,
             username: req.user.username,
@@ -196,7 +233,6 @@ authRouter.post("/logout", authenticateToken, async (req: AuthRequest, res: Resp
         );
       } catch (e) {}
     }
-
 
     res.json({ success: true, message: "Logged out successfully" });
   } catch (err: any) {
@@ -212,53 +248,82 @@ authRouter.get("/me", authenticateToken, async (req: AuthRequest, res: Response)
 });
 
 /**
- * POST /api/auth/seed-admin
- * Seed initial tenant, company, branch, and admin user for first boot
+ * POST /api/auth/bootstrap
+ * Secure One-Time Initial Bootstrap Endpoint (Protected by BOOTSTRAP_SECRET)
  */
-authRouter.post("/seed-admin", async (req: AuthRequest, res: Response) => {
+authRouter.post("/bootstrap", async (req: AuthRequest, res: Response) => {
   try {
-    const defaultTenantId = "tenant-main";
-    const defaultCompanyId = "company-main";
-    const defaultBranchId = "branch-main";
+    await ensureInitialized();
+    const bootstrapSecret = process.env.BOOTSTRAP_SECRET;
+    const providedSecret = req.headers["x-bootstrap-secret"] || req.body.bootstrapSecret;
+
+    if (!bootstrapSecret || providedSecret !== bootstrapSecret) {
+      res.status(403).json({ error: { code: "FORBIDDEN", message: "Invalid or unconfigured bootstrap secret.", statusCode: 403 } });
+      return;
+    }
+
+    const existingUsers = await db.select().from(users);
+    if (existingUsers.length > 0) {
+      res.status(400).json({ error: { code: "BOOTSTRAP_DISABLED", message: "Bootstrap disabled: Users already exist in system.", statusCode: 400 } });
+      return;
+    }
+
+    const { username, email, password, tenantName, companyName } = req.body;
+    if (!username || !email || !password) {
+      res.status(400).json({ error: { code: "INVALID_INPUT", message: "Username, email, and password are required.", statusCode: 400 } });
+      return;
+    }
+
+    const tenantId = `tenant-${crypto.randomUUID()}`;
+    const companyId = `comp-${crypto.randomUUID()}`;
+    const branchId = `branch-${crypto.randomUUID()}`;
 
     await db.insert(tenants).values({
-      id: defaultTenantId,
-      code: "NOVARO-HQ",
-      name: "Novaro Global Tenant",
-    }).onConflictDoNothing();
+      id: tenantId,
+      code: "HQ-MAIN",
+      name: tenantName || "Primary Organization",
+    });
 
     await db.insert(companies).values({
-      id: defaultCompanyId,
-      tenantId: defaultTenantId,
-      name: "Novaro Enterprise Ltd",
+      id: companyId,
+      tenantId,
+      name: companyName || "Headquarters Company",
       currency: "SAR",
-    }).onConflictDoNothing();
+    });
 
     await db.insert(branches).values({
-      id: defaultBranchId,
-      tenantId: defaultTenantId,
-      companyId: defaultCompanyId,
-      code: "BR-HQ",
-      name: "Riyadh HQ Branch",
-    }).onConflictDoNothing();
+      id: branchId,
+      tenantId,
+      companyId,
+      code: "BR-01",
+      name: "Main Branch",
+    });
 
-    const adminPasswordHash = await AuthService.hashPassword("Admin@123456");
+    const adminPasswordHash = await AuthService.hashPassword(password);
+    const userId = `usr-admin-${crypto.randomUUID()}`;
 
     await db.insert(users).values({
-      id: "usr-admin-001",
-      tenantId: defaultTenantId,
-      companyId: defaultCompanyId,
-      branchId: defaultBranchId,
-      username: "admin",
-      email: "admin@novaro.erp",
+      id: userId,
+      tenantId,
+      companyId,
+      branchId,
+      username,
+      email,
       role: "ADMIN",
       passwordHash: adminPasswordHash,
       status: "ACTIVE",
       isActive: true,
-    }).onConflictDoNothing();
+    });
 
-    res.json({ success: true, message: "Initial Admin user seeded successfully. Username: admin, Password: Admin@123456" });
+    res.status(201).json({
+      success: true,
+      message: "Bootstrap successful. Administrator account created.",
+      tenantId,
+      companyId,
+      branchId,
+      userId,
+    });
   } catch (err: any) {
-    res.status(500).json({ error: { code: "SEED_FAILED", message: err.message, statusCode: 500 } });
+    res.status(500).json({ error: { code: "BOOTSTRAP_FAILED", message: err.message, statusCode: 500 } });
   }
 });
