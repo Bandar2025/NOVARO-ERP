@@ -1,3 +1,4 @@
+process.env.DATABASE_PROVIDER = process.env.DATABASE_PROVIDER || "pglite";
 // NOVARO ERP Phase 2A — 18-Check Master Certification Suite
 import {
   LocalAccountRepository,

@@ -9,7 +9,7 @@
     "start": "node dist/server.cjs",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
-    "test": "tsx tests/phase2dR1SecuritySuite.ts && tsx tests/certificationSuite.ts"
+    "test": "tsx tests/pgliteCertificationSuite.ts && tsx tests/postgresRealCertificationSuite.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",

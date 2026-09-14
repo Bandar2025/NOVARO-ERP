@@ -19,7 +19,8 @@ CREATE TABLE IF NOT EXISTS companies (
   settings JSONB,
   is_active BOOLEAN DEFAULT true NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+  CONSTRAINT uq_companies_tenant_id UNIQUE(tenant_id, id)
 );
 
 CREATE TABLE IF NOT EXISTS branches (
@@ -31,7 +32,8 @@ CREATE TABLE IF NOT EXISTS branches (
   address TEXT,
   is_active BOOLEAN DEFAULT true NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+  CONSTRAINT uq_branches_tenant_company_id UNIQUE(tenant_id, company_id, id)
 );
 
 CREATE TABLE IF NOT EXISTS users (
@@ -348,8 +350,8 @@ CREATE TABLE IF NOT EXISTS warehouses (
 CREATE TABLE IF NOT EXISTS sync_queue (
   id VARCHAR(255) PRIMARY KEY,
   tenant_id VARCHAR(255) NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
-  company_id VARCHAR(255) NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
-  branch_id VARCHAR(255) REFERENCES branches(id) ON DELETE RESTRICT,
+  company_id VARCHAR(255) NOT NULL,
+  branch_id VARCHAR(255),
   idempotency_key VARCHAR(255) NOT NULL,
   entity_type VARCHAR(100) NOT NULL,
   operation VARCHAR(50) NOT NULL,
@@ -359,6 +361,12 @@ CREATE TABLE IF NOT EXISTS sync_queue (
   last_error TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
   processed_at TIMESTAMP WITH TIME ZONE,
-  CONSTRAINT sync_queue_idempotency_unique UNIQUE(tenant_id, idempotency_key)
+  CONSTRAINT fk_sync_queue_company FOREIGN KEY (tenant_id, company_id) REFERENCES companies(tenant_id, id) ON DELETE RESTRICT,
+  CONSTRAINT fk_sync_queue_branch FOREIGN KEY (tenant_id, company_id, branch_id) REFERENCES branches(tenant_id, company_id, id) ON DELETE RESTRICT,
+  CONSTRAINT sync_queue_idempotency_unique UNIQUE(tenant_id, idempotency_key),
+  CONSTRAINT chk_sync_queue_status CHECK (status IN ('PENDING', 'PROCESSING', 'SYNCED', 'FAILED', 'CONFLICT')),
+  CONSTRAINT chk_sync_queue_operation CHECK (operation IN ('CREATE', 'UPDATE', 'DELETE')),
+  CONSTRAINT chk_sync_queue_retry_nonneg CHECK (retry_count >= 0),
+  CONSTRAINT chk_sync_queue_idempotency_nonempty CHECK (length(trim(idempotency_key)) > 0)
 );
 `;

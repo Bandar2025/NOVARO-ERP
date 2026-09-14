@@ -5,6 +5,6 @@ export default defineConfig({
   out: "./src/infrastructure/database/migrations",
   dialect: "postgresql",
   dbCredentials: {
-    url: process.env.DATABASE_URL || "postgres://postgres:postgres@localhost:5432/novaro_erp",
+    url: process.env.DATABASE_URL || "",
   },
 });

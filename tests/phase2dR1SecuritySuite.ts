@@ -23,6 +23,7 @@ import { AuthService, validateAuthConfig } from "../server/services/authService"
 const JWT_SECRET = "novaro-production-jwt-secret-key-32chars-min-length-required-2026";
 const JWT_REFRESH_SECRET = "novaro-production-jwt-refresh-secret-key-32chars-min-length-required-2026";
 
+process.env.DATABASE_PROVIDER = process.env.DATABASE_PROVIDER || "pglite";
 process.env.JWT_SECRET = JWT_SECRET;
 process.env.JWT_REFRESH_SECRET = JWT_REFRESH_SECRET;
 
