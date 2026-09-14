@@ -85,12 +85,20 @@ async function runProviderContractTests() {
     false
   );
 
-  // CASE 3: DATABASE_PROVIDER missing -> FAIL FAST
+  // CASE 3: DATABASE_PROVIDER missing without DATABASE_URL -> default to pglite
   runIsolatedCheck(
-    "CASE 3: DATABASE_PROVIDER missing -> FAIL FAST",
+    "CASE 3: DATABASE_PROVIDER missing without DATABASE_URL -> default to pglite",
     { DATABASE_PROVIDER: undefined, DATABASE_URL: undefined },
-    "FAIL FAST CONFIG ERROR: DATABASE_PROVIDER environment variable is missing",
-    true
+    "RESOLVED_PROVIDER:pglite",
+    false
+  );
+
+  // CASE 3B: DATABASE_PROVIDER missing with DATABASE_URL -> default to postgres
+  runIsolatedCheck(
+    "CASE 3B: DATABASE_PROVIDER missing with DATABASE_URL -> default to postgres",
+    { DATABASE_PROVIDER: undefined, DATABASE_URL: "postgresql://user:pass@localhost:5432/testdb" },
+    "RESOLVED_PROVIDER:postgres",
+    false
   );
 
   // CASE 4: DATABASE_PROVIDER=invalid -> FAIL FAST

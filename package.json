@@ -9,7 +9,14 @@
     "start": "node dist/server.cjs",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
-    "test": "tsx tests/pgliteCertificationSuite.ts && tsx tests/postgresRealCertificationSuite.ts"
+    "db:migrate": "tsx src/infrastructure/database/client/migrate.ts",
+    "test": "npm run test:pglite && npm run test:postgres",
+    "test:pglite": "tsx tests/pgliteCertificationSuite.ts",
+    "test:postgres": "tsx tests/postgresRealCertificationSuite.ts",
+    "test:provider": "tsx tests/providerContractTest.ts",
+    "test:parity": "tsx tests/schemaParityTest.ts",
+    "test:security": "tsx tests/phase2dR1SecuritySuite.ts",
+    "test:domain": "tsx tests/certificationSuite.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",
