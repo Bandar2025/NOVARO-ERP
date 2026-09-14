@@ -12,6 +12,7 @@ async function runPgliteCertification() {
 
   try {
     execSync("npx tsx tests/providerContractTest.ts", { stdio: "inherit", env: process.env });
+    execSync("npx tsx tests/configSecurityGuardTest.ts", { stdio: "inherit", env: process.env });
     execSync("npx tsx tests/phase2dR1SecuritySuite.ts", { stdio: "inherit", env: process.env });
     execSync("npx tsx tests/certificationSuite.ts", { stdio: "inherit", env: process.env });
     execSync("npx tsx tests/phase2cUnitOfWorkSuite.ts", { stdio: "inherit", env: process.env });

@@ -16,14 +16,16 @@ export interface DatabaseConfig {
 }
 
 function resolveDatabaseConfig(): DatabaseConfig {
-  let rawProvider = (process.env.DATABASE_PROVIDER || "").toLowerCase().trim();
+  const rawProvider = (process.env.DATABASE_PROVIDER || "").toLowerCase().trim();
   const url = process.env.DATABASE_URL;
   const poolMax = parseInt(process.env.DATABASE_POOL_MAX || "10", 10);
   const ssl = process.env.DATABASE_SSL === "true";
   const name = process.env.DATABASE_NAME;
 
   if (!rawProvider) {
-    rawProvider = url ? "postgres" : "pglite";
+    throw new Error(
+      "FAIL FAST CONFIG ERROR: DATABASE_PROVIDER environment variable is missing. Must be explicitly set to 'pglite' or 'postgres'."
+    );
   }
 
   if (rawProvider !== "pglite" && rawProvider !== "postgres") {
