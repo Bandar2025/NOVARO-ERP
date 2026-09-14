@@ -8,7 +8,7 @@ if (isProduction && !process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL environment variable is required in production mode.");
 }
 
-const connectionString = process.env.DATABASE_URL || "postgres://postgres:postgres@localhost:5432/novaro_erp";
+const connectionString = process.env.DATABASE_URL || "postgres://node@localhost:5432/novaro_erp";
 
 export const pool = new pg.Pool({
   connectionString,

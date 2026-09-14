@@ -27,12 +27,61 @@ export class JournalEntryApplicationService {
   }
 
   async createDraft(dto: CreateJournalEntryDTO, context?: TenantContext): Promise<JournalEntry> {
+    if (this.uowFactory && context) {
+      return await this.uowFactory.run(async (uow) => {
+        if (!dto.items || dto.items.length < 2) {
+          throw AppError.validation("Journal entry must contain at least two line items.");
+        }
+
+        const accounts = await uow.accounts.getAll(context);
+        const accountMap = new Map(accounts.map(a => [a.id, a]));
+
+        const draftEntry: Omit<JournalEntry, "id"> = {
+          date: dto.date || new Date().toISOString().split("T")[0],
+          reference: dto.reference || `JE-MANUAL-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
+          notes: dto.notes || "Draft Manual Journal Entry",
+          items: dto.items.map((it, idx) => ({
+            id: `line-${Date.now()}-${idx}-${Math.floor(100 + Math.random() * 900)}`,
+            accountId: it.accountId,
+            accountName: accountMap.get(it.accountId)?.name || it.description || it.accountId,
+            debit: Number(it.debit || 0),
+            credit: Number(it.credit || 0),
+            notes: it.description || it.costCenter
+          })),
+          workflowStatus: "Draft",
+          posted: false,
+          currency: dto.currency,
+          exchangeRate: dto.exchangeRate || 1
+        };
+
+        const totalDebit = draftEntry.items.reduce((s, it) => s + it.debit, 0);
+        const totalCredit = draftEntry.items.reduce((s, it) => s + it.credit, 0);
+        const discrepancy = Math.abs(totalDebit - totalCredit);
+        if (Math.round(discrepancy * 100) > 0) {
+          throw AppError.unbalancedEntry(discrepancy);
+        }
+
+        const validation = AccountingEngine.validateEntry(draftEntry);
+        if (!validation.valid) {
+          throw AppError.validation(validation.errors.join("; "));
+        }
+
+        const fullEntry: JournalEntry = {
+          id: `je-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
+          ...draftEntry
+        };
+
+        await uow.journalEntries.save(fullEntry, context);
+        return fullEntry;
+      }, context);
+    }
+
     // 1. Structure validation
     if (!dto.items || dto.items.length < 2) {
       throw AppError.validation("Journal entry must contain at least two line items.");
     }
 
-    const accounts = this.accountRepo ? await this.accountRepo.getAll() : [];
+    const accounts = this.accountRepo ? await this.accountRepo.getAll({ context }) : [];
     const accountMap = new Map(accounts.map(a => [a.id, a]));
 
     const draftEntry: Omit<JournalEntry, "id"> = {
@@ -76,6 +125,37 @@ export class JournalEntryApplicationService {
   }
 
   async post(id: string, dto?: PostJournalEntryDTO, context?: TenantContext): Promise<JournalEntry> {
+    if (this.uowFactory && context) {
+      return await this.uowFactory.run(async (uow) => {
+        const entry = await uow.journalEntries.findById(id, context);
+        if (!entry) {
+          throw AppError.notFound("Journal entry", id);
+        }
+
+        if (entry.workflowStatus === "Posted" || entry.posted) {
+          throw AppError.conflict(`Journal entry '${id}' is already posted.`);
+        }
+
+        const allEntries = await uow.journalEntries.getAll({ context });
+        const periods = await uow.fiscalPeriods.getAll({ context });
+
+        const postResult = AccountingEngine.postEntry(entry, allEntries, periods);
+        if (!postResult.success || !postResult.entry) {
+          if (
+            postResult.error?.toLowerCase().includes("period") ||
+            postResult.error?.includes("CLOSED") ||
+            postResult.error?.includes("LOCKED")
+          ) {
+            throw AppError.periodLocked(entry.date);
+          }
+          throw AppError.validation(postResult.error || "Failed to post journal entry.");
+        }
+
+        await uow.journalEntries.save(postResult.entry, context);
+        return postResult.entry;
+      }, context);
+    }
+
     const entry = await this.journalEntryRepo.findById(id, context);
     if (!entry) {
       throw AppError.notFound("Journal entry", id);
@@ -85,8 +165,8 @@ export class JournalEntryApplicationService {
       throw AppError.conflict(`Journal entry '${id}' is already posted.`);
     }
 
-    const allEntries = await this.journalEntryRepo.getAll();
-    const periods = await this.fiscalPeriodRepo.getAll();
+    const allEntries = await this.journalEntryRepo.getAll({ context });
+    const periods = await this.fiscalPeriodRepo.getAll({ context });
 
     const postResult = AccountingEngine.postEntry(entry, allEntries, periods);
     if (!postResult.success || !postResult.entry) {

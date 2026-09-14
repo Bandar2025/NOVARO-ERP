@@ -10,9 +10,6 @@ export class DrizzleJournalEntryRepository implements JournalEntryRepository {
   constructor(private client: DbOrTx = db) {}
 
   private async executeTx<T>(fn: (txClient: any) => Promise<T>): Promise<T> {
-    if (typeof this.client.transaction === "function") {
-      return await this.client.transaction(fn);
-    }
     return await fn(this.client);
   }
 

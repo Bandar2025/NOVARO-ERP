@@ -1,4 +1,4 @@
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { db } from "../client/db";
 import { documentSequences } from "../schema/documentSequences";
 import {
@@ -14,49 +14,30 @@ export class DrizzleDocumentSequenceRepository implements DocumentSequenceReposi
   async getNextSequence(params: DocumentSequenceParams, context?: TenantContext): Promise<number> {
     const { tenantId, companyId, branchId: ctxBranchId } = extractTenantContext(context);
     const branchId = params.branchId || ctxBranchId || "main-branch";
+    const id = `seq-${tenantId}-${companyId}-${branchId}-${params.documentType}-${params.fiscalYearId}`;
 
-    const rows = await this.client
-      .select()
-      .from(documentSequences)
-      .where(
-        and(
-          eq(documentSequences.tenantId, tenantId),
-          eq(documentSequences.companyId, companyId),
-          eq(documentSequences.branchId, branchId),
-          eq(documentSequences.documentType, params.documentType),
-          eq(documentSequences.fiscalYearId, params.fiscalYearId)
-        )
-      )
-      .for("update")
-      .limit(1);
+    const inserted = await this.client
+      .insert(documentSequences)
+      .values({
+        id,
+        tenantId,
+        companyId,
+        branchId,
+        documentType: params.documentType,
+        fiscalYearId: params.fiscalYearId,
+        lastSequence: 1,
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: documentSequences.id,
+        set: {
+          lastSequence: sql`${documentSequences.lastSequence} + 1`,
+          updatedAt: new Date(),
+        },
+      })
+      .returning({ lastSequence: documentSequences.lastSequence });
 
-    if (rows.length > 0) {
-      const nextVal = rows[0].lastSequence + 1;
-      await this.client
-        .update(documentSequences)
-        .set({
-          lastSequence: nextVal,
-          updatedAt: new Date(),
-        })
-        .where(eq(documentSequences.id, rows[0].id));
-      return nextVal;
-    } else {
-      const id = `seq-${tenantId}-${companyId}-${branchId}-${params.documentType}-${params.fiscalYearId}`;
-      const nextVal = 1;
-      await this.client
-        .insert(documentSequences)
-        .values({
-          id,
-          tenantId,
-          companyId,
-          branchId,
-          documentType: params.documentType,
-          fiscalYearId: params.fiscalYearId,
-          lastSequence: nextVal,
-          updatedAt: new Date(),
-        });
-      return nextVal;
-    }
+    return Number(inserted[0].lastSequence);
   }
 
   formatDocumentNumber(documentType: string, sequenceNumber: number, fiscalYearStr: string = "2026"): string {

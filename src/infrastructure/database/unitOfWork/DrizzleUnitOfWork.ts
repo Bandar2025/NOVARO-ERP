@@ -1,7 +1,9 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { db, DbOrTx } from "../client/db";
 import { UnitOfWork, UnitOfWorkFactory, UnitOfWorkOptions } from "../../../core/application/repositories/UnitOfWork";
 import { TenantContext } from "../../../core/application/repositories/RepositoryInterfaces";
 import { extractTenantContext } from "../repositories/contextUtils";
+import { AppError } from "../../../core/application/errors/ApiError";
 import { DrizzleAccountRepository } from "../repositories/DrizzleAccountRepository";
 import { DrizzleJournalEntryRepository } from "../repositories/DrizzleJournalEntryRepository";
 import { DrizzleCustomerRepository } from "../repositories/DrizzleCustomerRepository";
@@ -12,6 +14,8 @@ import { DrizzlePurchaseRepository } from "../repositories/DrizzlePurchaseReposi
 import { DrizzleFiscalPeriodRepository } from "../repositories/DrizzleFiscalPeriodRepository";
 import { DrizzleAuditRepository } from "../repositories/DrizzleAuditRepository";
 import { DrizzleDocumentSequenceRepository } from "../repositories/DrizzleDocumentSequenceRepository";
+
+const activeUoWStore = new AsyncLocalStorage<{ uow: UnitOfWork; context: TenantContext }>();
 
 export class DrizzleUnitOfWork implements UnitOfWork {
   readonly accounts: DrizzleAccountRepository;
@@ -48,13 +52,24 @@ export class DrizzleUnitOfWork implements UnitOfWork {
 
 export class DrizzleUnitOfWorkFactory implements UnitOfWorkFactory {
   async run<T>(fn: (uow: UnitOfWork) => Promise<T>, options: UnitOfWorkOptions): Promise<T> {
+    if (!options || !options.tenantId || !options.companyId) {
+      throw AppError.missingTenantId();
+    }
+
+    const parentStore = activeUoWStore.getStore();
+    if (parentStore) {
+      throw AppError.validation("Nested UnitOfWork execution is rejected to prevent uncoordinated nested database transactions.");
+    }
+
     const context = extractTenantContext(options);
     const isolationLevel = options.isolationLevel;
 
     return await db.transaction(
       async (tx) => {
         const uow = new DrizzleUnitOfWork(tx, context);
-        return await fn(uow);
+        return await activeUoWStore.run({ uow, context }, async () => {
+          return await fn(uow);
+        });
       },
       isolationLevel ? { isolationLevel } : undefined
     );
