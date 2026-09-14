@@ -71,6 +71,10 @@ export class AppError extends Error {
     return new AppError("JOURNAL_ENTRY_UNBALANCED", `Journal entry is not balanced. Total debit must equal total credit (Discrepancy: SAR ${discrepancy.toFixed(2)}).`, 400);
   }
 
+  static missingTenantId(): AppError {
+    return new AppError("VALIDATION_ERROR", "TenantContext with tenantId and companyId is mandatory for UnitOfWork execution.", 400);
+  }
+
   static internal(message: string = "An internal server error occurred."): AppError {
     return new AppError("INTERNAL_ERROR", message, 500);
   }

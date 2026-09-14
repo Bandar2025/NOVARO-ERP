@@ -1,15 +1,17 @@
 import { eq, and } from "drizzle-orm";
-import { db } from "../client/db";
+import { db, DbOrTx } from "../client/db";
 import { customers } from "../schema/customers";
 import { CustomerRepository, TenantContext, QueryOptions } from "../../../core/application/repositories/RepositoryInterfaces";
 import { Customer } from "../../../types";
 import { extractTenantContext } from "./contextUtils";
 
 export class DrizzleCustomerRepository implements CustomerRepository {
+  constructor(private client: DbOrTx = db) {}
+
   async findById(id: string, context?: TenantContext): Promise<Customer | null> {
     const { tenantId, companyId } = extractTenantContext(context);
 
-    const rows = await db
+    const rows = await this.client
       .select()
       .from(customers)
       .where(
@@ -28,7 +30,7 @@ export class DrizzleCustomerRepository implements CustomerRepository {
   async getAll(options?: QueryOptions): Promise<Customer[]> {
     const { tenantId, companyId } = extractTenantContext(options);
 
-    const rows = await db
+    const rows = await this.client
       .select()
       .from(customers)
       .where(
@@ -44,7 +46,7 @@ export class DrizzleCustomerRepository implements CustomerRepository {
   async save(customer: Customer, context?: TenantContext): Promise<void> {
     const { tenantId, companyId } = extractTenantContext(context);
 
-    await db
+    await this.client
       .insert(customers)
       .values({
         id: customer.id,
@@ -75,7 +77,7 @@ export class DrizzleCustomerRepository implements CustomerRepository {
   async delete(id: string, context?: TenantContext): Promise<void> {
     const { tenantId, companyId } = extractTenantContext(context);
 
-    await db
+    await this.client
       .delete(customers)
       .where(
         and(

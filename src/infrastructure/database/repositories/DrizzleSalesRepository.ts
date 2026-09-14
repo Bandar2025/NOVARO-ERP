@@ -1,15 +1,17 @@
 import { eq, and } from "drizzle-orm";
-import { db } from "../client/db";
+import { db, DbOrTx } from "../client/db";
 import { salesInvoices, salesInvoiceItems } from "../schema/salesInvoices";
 import { SalesRepository, TenantContext, QueryOptions } from "../../../core/application/repositories/RepositoryInterfaces";
 import { SalesInvoice, Currency, DocumentWorkflowStatus } from "../../../types";
 import { extractTenantContext } from "./contextUtils";
 
 export class DrizzleSalesRepository implements SalesRepository {
+  constructor(private client: DbOrTx = db) {}
+
   async findById(id: string, context?: TenantContext): Promise<SalesInvoice | null> {
     const { tenantId, companyId } = extractTenantContext(context);
 
-    const headers = await db
+    const headers = await this.client
       .select()
       .from(salesInvoices)
       .where(
@@ -23,7 +25,7 @@ export class DrizzleSalesRepository implements SalesRepository {
 
     if (headers.length === 0) return null;
 
-    const items = await db
+    const items = await this.client
       .select()
       .from(salesInvoiceItems)
       .where(
@@ -40,7 +42,7 @@ export class DrizzleSalesRepository implements SalesRepository {
   async getAll(options?: QueryOptions): Promise<SalesInvoice[]> {
     const { tenantId, companyId } = extractTenantContext(options);
 
-    const headers = await db
+    const headers = await this.client
       .select()
       .from(salesInvoices)
       .where(
@@ -52,7 +54,7 @@ export class DrizzleSalesRepository implements SalesRepository {
 
     const result: SalesInvoice[] = [];
     for (const h of headers) {
-      const items = await db
+      const items = await this.client
         .select()
         .from(salesInvoiceItems)
         .where(
@@ -70,7 +72,7 @@ export class DrizzleSalesRepository implements SalesRepository {
   async save(invoice: SalesInvoice, context?: TenantContext): Promise<void> {
     const { tenantId, companyId } = extractTenantContext(context);
 
-    await db
+    await this.client
       .insert(salesInvoices)
       .values({
         id: invoice.id,
@@ -108,7 +110,7 @@ export class DrizzleSalesRepository implements SalesRepository {
       });
 
     // Replace items
-    await db
+    await this.client
       .delete(salesInvoiceItems)
       .where(
         and(
@@ -119,7 +121,7 @@ export class DrizzleSalesRepository implements SalesRepository {
       );
 
     if (invoice.items && invoice.items.length > 0) {
-      await db.insert(salesInvoiceItems).values(
+      await this.client.insert(salesInvoiceItems).values(
         invoice.items.map((it, idx) => ({
           id: `${invoice.id}-item-${idx + 1}`,
           tenantId,

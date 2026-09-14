@@ -1,15 +1,17 @@
 import { eq, and } from "drizzle-orm";
-import { db } from "../client/db";
+import { db, DbOrTx } from "../client/db";
 import { fiscalPeriods } from "../schema/fiscal";
 import { FiscalPeriodRepository, TenantContext, QueryOptions } from "../../../core/application/repositories/RepositoryInterfaces";
 import { FiscalPeriod } from "../../../core/domain/accounting/FiscalPeriod";
 import { extractTenantContext } from "./contextUtils";
 
 export class DrizzleFiscalPeriodRepository implements FiscalPeriodRepository {
+  constructor(private client: DbOrTx = db) {}
+
   async getAll(options?: QueryOptions): Promise<FiscalPeriod[]> {
     const { tenantId, companyId } = extractTenantContext(options);
 
-    const rows = await db
+    const rows = await this.client
       .select()
       .from(fiscalPeriods)
       .where(
@@ -25,7 +27,7 @@ export class DrizzleFiscalPeriodRepository implements FiscalPeriodRepository {
   async getById(id: string, context?: TenantContext): Promise<FiscalPeriod | null> {
     const { tenantId, companyId } = extractTenantContext(context);
 
-    const rows = await db
+    const rows = await this.client
       .select()
       .from(fiscalPeriods)
       .where(
@@ -41,10 +43,30 @@ export class DrizzleFiscalPeriodRepository implements FiscalPeriodRepository {
     return this.mapToDomain(rows[0]);
   }
 
+  async getByIdForUpdate(id: string, context?: TenantContext): Promise<FiscalPeriod | null> {
+    const { tenantId, companyId } = extractTenantContext(context);
+
+    const rows = await this.client
+      .select()
+      .from(fiscalPeriods)
+      .where(
+        and(
+          eq(fiscalPeriods.id, id),
+          eq(fiscalPeriods.tenantId, tenantId),
+          eq(fiscalPeriods.companyId, companyId)
+        )
+      )
+      .for("update")
+      .limit(1);
+
+    if (rows.length === 0) return null;
+    return this.mapToDomain(rows[0]);
+  }
+
   async save(period: FiscalPeriod, context?: TenantContext): Promise<void> {
     const { tenantId, companyId } = extractTenantContext(context);
 
-    await db
+    await this.client
       .insert(fiscalPeriods)
       .values({
         id: period.id,

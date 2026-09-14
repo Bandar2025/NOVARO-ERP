@@ -1,5 +1,5 @@
 import { eq, and } from "drizzle-orm";
-import { db } from "../client/db";
+import { db, DbOrTx } from "../client/db";
 import { journalEntries, journalEntryItems } from "../schema/journalEntries";
 import { JournalEntryRepository, TenantContext, QueryOptions } from "../../../core/application/repositories/RepositoryInterfaces";
 import { JournalEntry, JournalEntryItem, Currency, DocumentWorkflowStatus } from "../../../types";
@@ -7,10 +7,19 @@ import { AppError } from "../../../core/application/errors/ApiError";
 import { extractTenantContext } from "./contextUtils";
 
 export class DrizzleJournalEntryRepository implements JournalEntryRepository {
+  constructor(private client: DbOrTx = db) {}
+
+  private async executeTx<T>(fn: (txClient: any) => Promise<T>): Promise<T> {
+    if (typeof this.client.transaction === "function") {
+      return await this.client.transaction(fn);
+    }
+    return await fn(this.client);
+  }
+
   async findById(id: string, context?: TenantContext): Promise<JournalEntry | null> {
     const { tenantId, companyId } = extractTenantContext(context);
 
-    const headers = await db
+    const headers = await this.client
       .select()
       .from(journalEntries)
       .where(
@@ -24,7 +33,7 @@ export class DrizzleJournalEntryRepository implements JournalEntryRepository {
 
     if (headers.length === 0) return null;
 
-    const items = await db
+    const items = await this.client
       .select()
       .from(journalEntryItems)
       .where(
@@ -41,7 +50,7 @@ export class DrizzleJournalEntryRepository implements JournalEntryRepository {
   async findByReference(reference: string, context?: TenantContext): Promise<JournalEntry[]> {
     const { tenantId, companyId } = extractTenantContext(context);
 
-    const headers = await db
+    const headers = await this.client
       .select()
       .from(journalEntries)
       .where(
@@ -54,7 +63,7 @@ export class DrizzleJournalEntryRepository implements JournalEntryRepository {
 
     const result: JournalEntry[] = [];
     for (const h of headers) {
-      const items = await db
+      const items = await this.client
         .select()
         .from(journalEntryItems)
         .where(
@@ -72,7 +81,7 @@ export class DrizzleJournalEntryRepository implements JournalEntryRepository {
   async getAll(options?: QueryOptions): Promise<JournalEntry[]> {
     const { tenantId, companyId } = extractTenantContext(options);
 
-    const headers = await db
+    const headers = await this.client
       .select()
       .from(journalEntries)
       .where(
@@ -84,7 +93,7 @@ export class DrizzleJournalEntryRepository implements JournalEntryRepository {
 
     const result: JournalEntry[] = [];
     for (const h of headers) {
-      const items = await db
+      const items = await this.client
         .select()
         .from(journalEntryItems)
         .where(
@@ -102,7 +111,7 @@ export class DrizzleJournalEntryRepository implements JournalEntryRepository {
   async getPostedEntries(options?: QueryOptions): Promise<JournalEntry[]> {
     const { tenantId, companyId } = extractTenantContext(options);
 
-    const headers = await db
+    const headers = await this.client
       .select()
       .from(journalEntries)
       .where(
@@ -115,7 +124,7 @@ export class DrizzleJournalEntryRepository implements JournalEntryRepository {
 
     const result: JournalEntry[] = [];
     for (const h of headers) {
-      const items = await db
+      const items = await this.client
         .select()
         .from(journalEntryItems)
         .where(
@@ -141,7 +150,7 @@ export class DrizzleJournalEntryRepository implements JournalEntryRepository {
       }
     }
 
-    await db.transaction(async (tx) => {
+    await this.executeTx(async (tx) => {
       await tx
         .insert(journalEntries)
         .values({
@@ -213,7 +222,7 @@ export class DrizzleJournalEntryRepository implements JournalEntryRepository {
     if (existing.posted || existing.workflowStatus === "Posted") {
       throw AppError.postedEntryImmutable(id);
     }
-    await db.transaction(async (tx) => {
+    await this.executeTx(async (tx) => {
       await tx
         .delete(journalEntryItems)
         .where(

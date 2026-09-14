@@ -1,15 +1,17 @@
 import { eq, and } from "drizzle-orm";
-import { db } from "../client/db";
+import { db, DbOrTx } from "../client/db";
 import { suppliers } from "../schema/suppliers";
 import { SupplierRepository, TenantContext, QueryOptions } from "../../../core/application/repositories/RepositoryInterfaces";
 import { Supplier } from "../../../types";
 import { extractTenantContext } from "./contextUtils";
 
 export class DrizzleSupplierRepository implements SupplierRepository {
+  constructor(private client: DbOrTx = db) {}
+
   async findById(id: string, context?: TenantContext): Promise<Supplier | null> {
     const { tenantId, companyId } = extractTenantContext(context);
 
-    const rows = await db
+    const rows = await this.client
       .select()
       .from(suppliers)
       .where(
@@ -28,7 +30,7 @@ export class DrizzleSupplierRepository implements SupplierRepository {
   async getAll(options?: QueryOptions): Promise<Supplier[]> {
     const { tenantId, companyId } = extractTenantContext(options);
 
-    const rows = await db
+    const rows = await this.client
       .select()
       .from(suppliers)
       .where(
@@ -44,7 +46,7 @@ export class DrizzleSupplierRepository implements SupplierRepository {
   async save(supplier: Supplier, context?: TenantContext): Promise<void> {
     const { tenantId, companyId } = extractTenantContext(context);
 
-    await db
+    await this.client
       .insert(suppliers)
       .values({
         id: supplier.id,
@@ -75,7 +77,7 @@ export class DrizzleSupplierRepository implements SupplierRepository {
   async delete(id: string, context?: TenantContext): Promise<void> {
     const { tenantId, companyId } = extractTenantContext(context);
 
-    await db
+    await this.client
       .delete(suppliers)
       .where(
         and(

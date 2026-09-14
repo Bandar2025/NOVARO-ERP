@@ -1,5 +1,5 @@
 import { eq, and } from "drizzle-orm";
-import { db } from "../client/db";
+import { db, DbOrTx } from "../client/db";
 import { items } from "../schema/items";
 import { stockBatches } from "../schema/stockBatches";
 import { stockMovements } from "../schema/stockMovements";
@@ -11,11 +11,13 @@ import { CostLayer } from "../../../core/domain/inventory/CostLayer";
 import { extractTenantContext } from "./contextUtils";
 
 export class DrizzleInventoryRepository implements InventoryRepository {
+  constructor(private client: DbOrTx = db) {}
+
   // Items
   async getItemById(id: string, context?: TenantContext): Promise<Item | null> {
     const { tenantId, companyId } = extractTenantContext(context);
 
-    const rows = await db
+    const rows = await this.client
       .select()
       .from(items)
       .where(
@@ -31,10 +33,30 @@ export class DrizzleInventoryRepository implements InventoryRepository {
     return this.mapItemToDomain(rows[0]);
   }
 
+  async getItemByIdForUpdate(id: string, context?: TenantContext): Promise<Item | null> {
+    const { tenantId, companyId } = extractTenantContext(context);
+
+    const rows = await this.client
+      .select()
+      .from(items)
+      .where(
+        and(
+          eq(items.id, id),
+          eq(items.tenantId, tenantId),
+          eq(items.companyId, companyId)
+        )
+      )
+      .for("update")
+      .limit(1);
+
+    if (rows.length === 0) return null;
+    return this.mapItemToDomain(rows[0]);
+  }
+
   async getAllItems(options?: QueryOptions): Promise<Item[]> {
     const { tenantId, companyId } = extractTenantContext(options);
 
-    const rows = await db
+    const rows = await this.client
       .select()
       .from(items)
       .where(
@@ -50,7 +72,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
   async saveItem(item: Item, context?: TenantContext): Promise<void> {
     const { tenantId, companyId } = extractTenantContext(context);
 
-    await db
+    await this.client
       .insert(items)
       .values({
         id: item.id,
@@ -88,7 +110,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
   async getBatches(options?: QueryOptions): Promise<Batch[]> {
     const { tenantId, companyId } = extractTenantContext(options);
 
-    const rows = await db
+    const rows = await this.client
       .select()
       .from(stockBatches)
       .where(
@@ -104,7 +126,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
   async getBatchesByItem(itemId: string, context?: TenantContext): Promise<Batch[]> {
     const { tenantId, companyId } = extractTenantContext(context);
 
-    const rows = await db
+    const rows = await this.client
       .select()
       .from(stockBatches)
       .where(
@@ -121,7 +143,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
   async saveBatch(batch: Batch, context?: TenantContext): Promise<void> {
     const { tenantId, companyId, branchId } = extractTenantContext(context);
 
-    await db
+    await this.client
       .insert(stockBatches)
       .values({
         id: batch.id,
@@ -163,7 +185,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
   async getMovements(options?: QueryOptions): Promise<DomainStockMovement[]> {
     const { tenantId, companyId } = extractTenantContext(options);
 
-    const rows = await db
+    const rows = await this.client
       .select()
       .from(stockMovements)
       .where(
@@ -179,7 +201,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
   async saveMovement(movement: DomainStockMovement, context?: TenantContext): Promise<void> {
     const { tenantId, companyId, branchId } = extractTenantContext(context);
 
-    await db
+    await this.client
       .insert(stockMovements)
       .values({
         id: movement.id,
@@ -223,7 +245,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
   async getCostLayers(options?: QueryOptions): Promise<CostLayer[]> {
     const { tenantId, companyId } = extractTenantContext(options);
 
-    const rows = await db
+    const rows = await this.client
       .select()
       .from(costLayers)
       .where(
@@ -240,7 +262,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
     const { tenantId, companyId, branchId } = extractTenantContext(context);
 
     for (const layer of layersList) {
-      await db
+      await this.client
         .insert(costLayers)
         .values({
           id: layer.id,

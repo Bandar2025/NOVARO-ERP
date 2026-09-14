@@ -1,4 +1,4 @@
-import { UnitOfWork } from "../../../core/application/repositories/UnitOfWork";
+import { UnitOfWork, UnitOfWorkFactory, UnitOfWorkOptions } from "../../../core/application/repositories/UnitOfWork";
 import {
   AccountRepository,
   JournalEntryRepository,
@@ -7,7 +7,9 @@ import {
   InventoryRepository,
   SalesRepository,
   PurchaseRepository,
-  FiscalPeriodRepository
+  FiscalPeriodRepository,
+  AuditRepository,
+  DocumentSequenceRepository
 } from "../../../core/application/repositories/RepositoryInterfaces";
 import {
   LocalAccountRepository,
@@ -17,8 +19,12 @@ import {
   LocalInventoryRepository,
   LocalSalesRepository,
   LocalPurchaseRepository,
-  LocalFiscalPeriodRepository
+  LocalFiscalPeriodRepository,
+  LocalAuditRepository,
+  LocalDocumentSequenceRepository
 } from "./LocalRepositories";
+import { TenantContext } from "../../../core/application/repositories/TenantContext";
+import { AppError } from "../../../core/application/errors/ApiError";
 import { safeStorage } from "./safeStorage";
 
 export class LocalUnitOfWork implements UnitOfWork {
@@ -30,6 +36,8 @@ export class LocalUnitOfWork implements UnitOfWork {
   public sales: SalesRepository;
   public purchases: PurchaseRepository;
   public fiscalPeriods: FiscalPeriodRepository;
+  public audit: AuditRepository;
+  public documentSequences: DocumentSequenceRepository;
 
   private snapshot: Map<string, string | null> = new Map();
   private inTransaction: boolean = false;
@@ -45,10 +53,12 @@ export class LocalUnitOfWork implements UnitOfWork {
     "novaro_cost_layers",
     "novaro_sales_invoices",
     "novaro_purchase_orders",
-    "novaro_fiscal_periods"
+    "novaro_fiscal_periods",
+    "novaro_audit_logs",
+    "novaro_doc_sequences"
   ];
 
-  constructor() {
+  constructor(private context: TenantContext = { tenantId: "default-tenant", companyId: "default-company" }) {
     this.accounts = new LocalAccountRepository();
     this.journalEntries = new LocalJournalEntryRepository();
     this.customers = new LocalCustomerRepository();
@@ -57,6 +67,12 @@ export class LocalUnitOfWork implements UnitOfWork {
     this.sales = new LocalSalesRepository();
     this.purchases = new LocalPurchaseRepository();
     this.fiscalPeriods = new LocalFiscalPeriodRepository();
+    this.audit = new LocalAuditRepository();
+    this.documentSequences = new LocalDocumentSequenceRepository();
+  }
+
+  getContext(): TenantContext {
+    return this.context;
   }
 
   async begin(): Promise<void> {
@@ -86,3 +102,22 @@ export class LocalUnitOfWork implements UnitOfWork {
     this.inTransaction = false;
   }
 }
+
+export class LocalUnitOfWorkFactory implements UnitOfWorkFactory {
+  async run<T>(fn: (uow: UnitOfWork) => Promise<T>, options: UnitOfWorkOptions): Promise<T> {
+    if (!options || !options.tenantId || !options.companyId) {
+      throw AppError.missingTenantId();
+    }
+    const uow = new LocalUnitOfWork(options);
+    await uow.begin();
+    try {
+      const result = await fn(uow);
+      await uow.commit();
+      return result;
+    } catch (err) {
+      await uow.rollback();
+      throw err;
+    }
+  }
+}
+

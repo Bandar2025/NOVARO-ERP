@@ -1,15 +1,17 @@
 import { eq, and } from "drizzle-orm";
-import { db } from "../client/db";
+import { db, DbOrTx } from "../client/db";
 import { accounts } from "../schema/accounts";
 import { AccountRepository, TenantContext, QueryOptions } from "../../../core/application/repositories/RepositoryInterfaces";
 import { Account, AccountType } from "../../../types";
 import { extractTenantContext } from "./contextUtils";
 
 export class DrizzleAccountRepository implements AccountRepository {
+  constructor(private client: DbOrTx = db) {}
+
   async findById(id: string, context?: TenantContext): Promise<Account | null> {
     const { tenantId, companyId } = extractTenantContext(context);
 
-    const rows = await db
+    const rows = await this.client
       .select()
       .from(accounts)
       .where(
@@ -28,7 +30,7 @@ export class DrizzleAccountRepository implements AccountRepository {
   async findByCode(code: string, context?: TenantContext): Promise<Account | null> {
     const { tenantId, companyId } = extractTenantContext(context);
 
-    const rows = await db
+    const rows = await this.client
       .select()
       .from(accounts)
       .where(
@@ -47,7 +49,7 @@ export class DrizzleAccountRepository implements AccountRepository {
   async getAll(options?: QueryOptions): Promise<Account[]> {
     const { tenantId, companyId } = extractTenantContext(options);
 
-    const rows = await db
+    const rows = await this.client
       .select()
       .from(accounts)
       .where(
@@ -63,7 +65,7 @@ export class DrizzleAccountRepository implements AccountRepository {
   async save(account: Account, context?: TenantContext): Promise<void> {
     const { tenantId, companyId } = extractTenantContext(context);
 
-    await db
+    await this.client
       .insert(accounts)
       .values({
         id: account.id,

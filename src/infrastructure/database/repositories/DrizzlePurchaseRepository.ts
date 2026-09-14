@@ -1,15 +1,17 @@
 import { eq, and } from "drizzle-orm";
-import { db } from "../client/db";
+import { db, DbOrTx } from "../client/db";
 import { purchaseOrders, purchaseOrderItems } from "../schema/purchaseOrders";
 import { PurchaseRepository, TenantContext, QueryOptions } from "../../../core/application/repositories/RepositoryInterfaces";
 import { PurchaseOrder, Currency, DocumentWorkflowStatus } from "../../../types";
 import { extractTenantContext } from "./contextUtils";
 
 export class DrizzlePurchaseRepository implements PurchaseRepository {
+  constructor(private client: DbOrTx = db) {}
+
   async findById(id: string, context?: TenantContext): Promise<PurchaseOrder | null> {
     const { tenantId, companyId } = extractTenantContext(context);
 
-    const headers = await db
+    const headers = await this.client
       .select()
       .from(purchaseOrders)
       .where(
@@ -23,7 +25,7 @@ export class DrizzlePurchaseRepository implements PurchaseRepository {
 
     if (headers.length === 0) return null;
 
-    const items = await db
+    const items = await this.client
       .select()
       .from(purchaseOrderItems)
       .where(
@@ -40,7 +42,7 @@ export class DrizzlePurchaseRepository implements PurchaseRepository {
   async getAll(options?: QueryOptions): Promise<PurchaseOrder[]> {
     const { tenantId, companyId } = extractTenantContext(options);
 
-    const headers = await db
+    const headers = await this.client
       .select()
       .from(purchaseOrders)
       .where(
@@ -52,7 +54,7 @@ export class DrizzlePurchaseRepository implements PurchaseRepository {
 
     const result: PurchaseOrder[] = [];
     for (const h of headers) {
-      const items = await db
+      const items = await this.client
         .select()
         .from(purchaseOrderItems)
         .where(
@@ -70,7 +72,7 @@ export class DrizzlePurchaseRepository implements PurchaseRepository {
   async save(po: PurchaseOrder, context?: TenantContext): Promise<void> {
     const { tenantId, companyId } = extractTenantContext(context);
 
-    await db
+    await this.client
       .insert(purchaseOrders)
       .values({
         id: po.id,
@@ -106,7 +108,7 @@ export class DrizzlePurchaseRepository implements PurchaseRepository {
       });
 
     // Replace items
-    await db
+    await this.client
       .delete(purchaseOrderItems)
       .where(
         and(
@@ -117,7 +119,7 @@ export class DrizzlePurchaseRepository implements PurchaseRepository {
       );
 
     if (po.items && po.items.length > 0) {
-      await db.insert(purchaseOrderItems).values(
+      await this.client.insert(purchaseOrderItems).values(
         po.items.map((it, idx) => ({
           id: `${po.id}-item-${idx + 1}`,
           tenantId,

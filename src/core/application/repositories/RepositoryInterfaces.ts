@@ -45,6 +45,7 @@ export interface SupplierRepository {
 
 export interface InventoryRepository {
   getItemById(id: string, context?: TenantContext): Promise<Item | null>;
+  getItemByIdForUpdate(id: string, context?: TenantContext): Promise<Item | null>;
   getAllItems(options?: QueryOptions): Promise<Item[]>;
   saveItem(item: Item, context?: TenantContext): Promise<void>;
   
@@ -77,7 +78,19 @@ export interface PurchaseRepository {
 export interface FiscalPeriodRepository {
   getAll(options?: QueryOptions): Promise<FiscalPeriod[]>;
   getById(id: string, context?: TenantContext): Promise<FiscalPeriod | null>;
+  getByIdForUpdate(id: string, context?: TenantContext): Promise<FiscalPeriod | null>;
   save(period: FiscalPeriod, context?: TenantContext): Promise<void>;
+}
+
+export interface DocumentSequenceParams {
+  documentType: string;
+  fiscalYearId: string;
+  branchId?: string;
+}
+
+export interface DocumentSequenceRepository {
+  getNextSequence(params: DocumentSequenceParams, context?: TenantContext): Promise<number>;
+  formatDocumentNumber(documentType: string, sequenceNumber: number, fiscalYearStr?: string): string;
 }
 
 export interface AuditRepository {

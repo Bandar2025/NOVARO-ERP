@@ -1,15 +1,17 @@
 import { eq, and } from "drizzle-orm";
-import { db } from "../client/db";
+import { db, DbOrTx } from "../client/db";
 import { auditLogs } from "../schema/auditLogs";
 import { AuditRepository, TenantContext, QueryOptions } from "../../../core/application/repositories/RepositoryInterfaces";
 import { AuditLog } from "../../../types";
 import { extractTenantContext } from "./contextUtils";
 
 export class DrizzleAuditRepository implements AuditRepository {
+  constructor(private client: DbOrTx = db) {}
+
   async log(audit: AuditLog, context?: TenantContext): Promise<void> {
     const { tenantId, companyId } = extractTenantContext(context);
 
-    await db.insert(auditLogs).values({
+    await this.client.insert(auditLogs).values({
       id: audit.id || `audit-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       tenantId,
       companyId,
@@ -27,7 +29,7 @@ export class DrizzleAuditRepository implements AuditRepository {
   async getAll(options?: QueryOptions): Promise<AuditLog[]> {
     const { tenantId, companyId } = extractTenantContext(options);
 
-    const rows = await db
+    const rows = await this.client
       .select()
       .from(auditLogs)
       .where(

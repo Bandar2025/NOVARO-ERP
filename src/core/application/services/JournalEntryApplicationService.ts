@@ -1,6 +1,7 @@
 import { JournalEntry } from "../../../types";
 import { CreateJournalEntryDTO, PostJournalEntryDTO, ReverseJournalEntryDTO } from "../dtos";
 import { JournalEntryRepository, FiscalPeriodRepository, AccountRepository } from "../repositories/RepositoryInterfaces";
+import { UnitOfWorkFactory } from "../repositories/UnitOfWork";
 import { AccountingEngine } from "../accounting/AccountingEngine";
 import { AppError } from "../errors/ApiError";
 import { TenantContext, QueryOptions } from "../repositories/TenantContext";
@@ -9,7 +10,8 @@ export class JournalEntryApplicationService {
   constructor(
     private journalEntryRepo: JournalEntryRepository,
     private fiscalPeriodRepo: FiscalPeriodRepository,
-    private accountRepo?: AccountRepository
+    private accountRepo?: AccountRepository,
+    private uowFactory?: UnitOfWorkFactory
   ) {}
 
   async getAll(options?: QueryOptions): Promise<JournalEntry[]> {
@@ -107,6 +109,38 @@ export class JournalEntryApplicationService {
       throw AppError.validation("Reason is mandatory for reversing a posted journal entry.");
     }
 
+    if (this.uowFactory && context) {
+      return await this.uowFactory.run(async (uow) => {
+        const entry = await uow.journalEntries.findById(id, context);
+        if (!entry) {
+          throw AppError.notFound("Journal entry", id);
+        }
+
+        if (entry.workflowStatus !== "Posted" && !entry.posted) {
+          throw AppError.validation(`Journal entry '${id}' is not posted and cannot be reversed. Only posted vouchers can be reversed.`);
+        }
+
+        const allEntries = await uow.journalEntries.getAll({ context });
+        const reversalResult = AccountingEngine.reverseEntry(id, allEntries, reason);
+
+        if (!reversalResult.success || !reversalResult.reversalEntry) {
+          throw AppError.validation(reversalResult.error || "Failed to reverse journal entry.");
+        }
+
+        await uow.journalEntries.save(reversalResult.reversalEntry, context);
+        const updatedOriginal = reversalResult.updatedOriginalEntry || {
+          ...entry,
+          notes: `${entry.notes} [REVERSED by ${reversalResult.reversalEntry.id}]`
+        };
+        await uow.journalEntries.save(updatedOriginal, context);
+
+        return {
+          originalEntry: updatedOriginal,
+          reversalEntry: reversalResult.reversalEntry
+        };
+      }, context);
+    }
+
     const entry = await this.journalEntryRepo.findById(id, context);
     if (!entry) {
       throw AppError.notFound("Journal entry", id);
@@ -116,25 +150,26 @@ export class JournalEntryApplicationService {
       throw AppError.validation(`Journal entry '${id}' is not posted and cannot be reversed. Only posted vouchers can be reversed.`);
     }
 
-    const allEntries = await this.journalEntryRepo.getAll();
+    const allEntries = await this.journalEntryRepo.getAll({ context });
     const reversalResult = AccountingEngine.reverseEntry(id, allEntries, reason);
-    if (!reversalResult.success || !reversalResult.reversalEntry) {
+
+    if (!reversalResult.success || !reversalResult.error && !reversalResult.reversalEntry) {
       throw AppError.validation(reversalResult.error || "Failed to reverse journal entry.");
     }
 
     // Save reversal entry
-    await this.journalEntryRepo.save(reversalResult.reversalEntry, context);
+    await this.journalEntryRepo.save(reversalResult.reversalEntry!, context);
 
     // Save updated original entry with reversal annotation
     const updatedOriginal = reversalResult.updatedOriginalEntry || {
       ...entry,
-      notes: `${entry.notes} [REVERSED by ${reversalResult.reversalEntry.id}]`
+      notes: `${entry.notes} [REVERSED by ${reversalResult.reversalEntry!.id}]`
     };
     await this.journalEntryRepo.save(updatedOriginal, context);
 
     return {
       originalEntry: updatedOriginal,
-      reversalEntry: reversalResult.reversalEntry
+      reversalEntry: reversalResult.reversalEntry!
     };
   }
 
@@ -167,3 +202,4 @@ export class JournalEntryApplicationService {
     return updated;
   }
 }
+

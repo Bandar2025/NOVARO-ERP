@@ -11,6 +11,8 @@ import {
   SalesRepository,
   PurchaseRepository,
   FiscalPeriodRepository,
+  DocumentSequenceRepository,
+  DocumentSequenceParams,
   AuditRepository,
   TenantContext,
   QueryOptions
@@ -275,6 +277,10 @@ export class LocalInventoryRepository implements InventoryRepository {
     return items.find(i => i.id === id) || null;
   }
 
+  async getItemByIdForUpdate(id: string, context?: TenantContext): Promise<Item | null> {
+    return this.getItemById(id, context);
+  }
+
   async getAllItems(_options?: QueryOptions): Promise<Item[]> {
     const raw = safeStorage.getItem(this.itemsKey);
     if (!raw) {
@@ -493,6 +499,10 @@ export class LocalFiscalPeriodRepository implements FiscalPeriodRepository {
     return list.find(p => p.id === id) || null;
   }
 
+  async getByIdForUpdate(id: string, context?: TenantContext): Promise<FiscalPeriod | null> {
+    return this.getById(id, context);
+  }
+
   async save(period: FiscalPeriod, _context?: TenantContext): Promise<void> {
     const list = this.load();
     const idx = list.findIndex(p => p.id === period.id);
@@ -505,7 +515,40 @@ export class LocalFiscalPeriodRepository implements FiscalPeriodRepository {
   }
 }
 
-// 9. Audit Repository
+// 9. Document Sequence Repository
+export class LocalDocumentSequenceRepository implements DocumentSequenceRepository {
+  private key = "novaro_document_sequences";
+
+  private load(): Record<string, number> {
+    const raw = safeStorage.getItem(this.key);
+    if (!raw) return {};
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return {};
+    }
+  }
+
+  async getNextSequence(params: DocumentSequenceParams, context?: TenantContext): Promise<number> {
+    const tenantId = context?.tenantId || "default-tenant";
+    const companyId = context?.companyId || "default-company";
+    const branchId = params.branchId || context?.branchId || "main-branch";
+    const seqKey = `${tenantId}:${companyId}:${branchId}:${params.documentType}:${params.fiscalYearId}`;
+
+    const seqs = this.load();
+    const nextVal = (seqs[seqKey] || 0) + 1;
+    seqs[seqKey] = nextVal;
+    safeStorage.setItem(this.key, JSON.stringify(seqs));
+    return nextVal;
+  }
+
+  formatDocumentNumber(documentType: string, sequenceNumber: number, fiscalYearStr: string = "2026"): string {
+    const padded = sequenceNumber.toString().padStart(6, "0");
+    return `${documentType}-${fiscalYearStr}-${padded}`;
+  }
+}
+
+// 10. Audit Repository
 export class LocalAuditRepository implements AuditRepository {
   private key = "novaro_audit_logs";
 
@@ -532,3 +575,5 @@ export class LocalAuditRepository implements AuditRepository {
     return this.load();
   }
 }
+
+
