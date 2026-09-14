@@ -3,7 +3,7 @@ import http from "http";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import { eq } from "drizzle-orm";
-import { db, ensureInitialized } from "../src/infrastructure/database/client/db";
+import { db, dbConfig, ensureInitialized } from "../src/infrastructure/database/client/db";
 import { tenants, companies, branches, users, refreshTokens, auditLogs } from "../src/infrastructure/database/schema";
 import { authRouter } from "../server/routes/auth";
 import { usersRouter } from "../server/routes/users";
@@ -27,8 +27,9 @@ process.env.JWT_SECRET = JWT_SECRET;
 process.env.JWT_REFRESH_SECRET = JWT_REFRESH_SECRET;
 
 async function runSecuritySuite() {
+  const providerLabel = dbConfig.provider === "postgres" ? "POSTGRESQL REAL" : "PGLITE DEVELOPMENT";
   console.log("==========================================================================");
-  console.log("   NOVARO ERP — PHASE 2D-R1 SECURITY HARDENING REAL CERTIFICATION SUITE");
+  console.log(`   NOVARO ERP — PHASE 2E SECURITY HARDENING (${providerLabel} CERTIFICATION SUITE)`);
   console.log("==========================================================================");
 
   // 1. Setup Express app on ephemeral port
@@ -583,7 +584,8 @@ async function runSecuritySuite() {
     console.error(`\n❌ SECURITY CERTIFICATION FAILED: ${failed} tests failed.`);
     process.exit(1);
   } else {
-    console.log(`\n🎉 CERTIFICATION CERTIFIED PASS: All 30 Security Controls Validated against PostgreSQL!`);
+    const targetEngine = dbConfig.provider === "postgres" ? "Real PostgreSQL Server" : "PGlite Development Engine";
+    console.log(`\n🎉 CERTIFICATION CERTIFIED PASS: All 30 Security Controls Validated against ${targetEngine}!`);
     process.exit(0);
   }
 }

@@ -1,42 +1,28 @@
 import { Router, Response } from "express";
 import { eq, and } from "drizzle-orm";
-import { db, ensureInitialized } from "../../src/infrastructure/database/client/db";
+import { db, pool, ensureInitialized } from "../../src/infrastructure/database/client/db";
 import { users, tenants, companies, branches } from "../../src/infrastructure/database/schema";
 import { AuthService } from "../services/authService";
 import { AuthRequest, authenticateToken } from "../middleware/authMiddleware";
 import { AuthenticatedUser } from "../../src/core/domain/auth/AuthToken";
 import { DrizzleAuditRepository } from "../../src/infrastructure/database/repositories/DrizzleAuditRepository";
+import { loginRateLimiter } from "../middleware/rateLimiter";
 import crypto from "crypto";
 
 export const authRouter = Router();
 const auditRepo = new DrizzleAuditRepository();
 
-// Simple Login Rate Limiter (Max 10 failed login attempts per minute per IP)
-const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
-
-function checkRateLimit(ip: string): boolean {
-  const now = Date.now();
-  const limit = rateLimitMap.get(ip);
-  if (!limit || now > limit.resetTime) {
-    rateLimitMap.set(ip, { count: 1, resetTime: now + 60000 });
-    return true;
-  }
-  if (limit.count >= 20) {
-    return false;
-  }
-  limit.count++;
-  return true;
-}
-
 /**
  * POST /api/auth/login
- * Real Production Login with password verification & account lockout
+ * Real Production Login with password verification & atomic account lockout
  */
 authRouter.post("/login", async (req: AuthRequest, res: Response) => {
   try {
     await ensureInitialized();
     const clientIp = req.ip || req.socket.remoteAddress || "127.0.0.1";
-    if (!checkRateLimit(clientIp)) {
+    
+    // Strict rate limiting: 10 attempts per minute per IP
+    if (!loginRateLimiter.check(clientIp, 10, 60000)) {
       res.status(429).json({
         error: { code: "TOO_MANY_REQUESTS", message: "Too many login attempts. Please try again later.", statusCode: 429 },
       });
@@ -105,9 +91,13 @@ authRouter.post("/login", async (req: AuthRequest, res: Response) => {
     const isPasswordValid = await AuthService.comparePassword(password, userRecord.passwordHash);
 
     if (!isPasswordValid) {
-      const attempts = (userRecord.failedLoginAttempts || 0) + 1;
-      const newStatus = attempts >= 5 ? "LOCKED" : userRecord.status;
-      await db.update(users).set({ failedLoginAttempts: attempts, status: newStatus }).where(eq(users.id, userRecord.id));
+      // Atomic increment in SQL to prevent concurrency race conditions
+      const updateRes = await pool.query(
+        `UPDATE users SET failed_login_attempts = failed_login_attempts + 1, status = CASE WHEN failed_login_attempts + 1 >= 5 THEN 'LOCKED' ELSE status END WHERE id = $1 RETURNING failed_login_attempts, status`,
+        [userRecord.id]
+      );
+
+      const attempts = updateRes.rows[0]?.failed_login_attempts ?? ((userRecord.failedLoginAttempts || 0) + 1);
 
       // Audit failed login
       try {

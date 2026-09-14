@@ -27,3 +27,4 @@ export * from "./cashboxTransactions";
 export * from "./recipes";
 export * from "./auditLogs";
 export * from "./documentSequences";
+export * from "./syncQueue";

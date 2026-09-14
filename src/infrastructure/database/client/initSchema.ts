@@ -344,4 +344,21 @@ CREATE TABLE IF NOT EXISTS warehouses (
   name VARCHAR(255) NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS sync_queue (
+  id VARCHAR(255) PRIMARY KEY,
+  tenant_id VARCHAR(255) NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
+  company_id VARCHAR(255) NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+  branch_id VARCHAR(255) REFERENCES branches(id) ON DELETE RESTRICT,
+  idempotency_key VARCHAR(255) NOT NULL,
+  entity_type VARCHAR(100) NOT NULL,
+  operation VARCHAR(50) NOT NULL,
+  payload TEXT NOT NULL,
+  status VARCHAR(50) DEFAULT 'PENDING' NOT NULL,
+  retry_count INTEGER DEFAULT 0 NOT NULL,
+  last_error TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+  processed_at TIMESTAMP WITH TIME ZONE,
+  CONSTRAINT sync_queue_idempotency_unique UNIQUE(tenant_id, idempotency_key)
+);
 `;
