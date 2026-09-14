@@ -33,7 +33,7 @@ export class JournalEntryApplicationService {
           throw AppError.validation("Journal entry must contain at least two line items.");
         }
 
-        const accounts = await uow.accounts.getAll(context);
+        const accounts = await uow.accounts.getAll({ context });
         const accountMap = new Map(accounts.map(a => [a.id, a]));
 
         const draftEntry: Omit<JournalEntry, "id"> = {
@@ -137,7 +137,7 @@ export class JournalEntryApplicationService {
         }
 
         const allEntries = await uow.journalEntries.getAll({ context });
-        const periods = await uow.fiscalPeriods.getAll({ context });
+        const periods = await uow.fiscalPeriods.getAll({ context, forUpdate: true });
 
         const postResult = AccountingEngine.postEntry(entry, allEntries, periods);
         if (!postResult.success || !postResult.entry) {

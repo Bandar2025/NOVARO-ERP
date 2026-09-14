@@ -7,13 +7,21 @@ import {
   TenantContext
 } from "../../../core/application/repositories/RepositoryInterfaces";
 import { extractTenantContext } from "./contextUtils";
+import { AppError } from "../../../core/application/errors/ApiError";
 
 export class DrizzleDocumentSequenceRepository implements DocumentSequenceRepository {
   constructor(private client: any = db) {}
 
   async getNextSequence(params: DocumentSequenceParams, context?: TenantContext): Promise<number> {
     const { tenantId, companyId, branchId: ctxBranchId } = extractTenantContext(context);
-    const branchId = params.branchId || ctxBranchId || "main-branch";
+    const branchId = params.branchId || ctxBranchId;
+
+    if (!branchId) {
+      throw AppError.validation(
+        "branchId is required for document sequence generation (must be provided in params or TenantContext)."
+      );
+    }
+
     const id = `seq-${tenantId}-${companyId}-${branchId}-${params.documentType}-${params.fiscalYearId}`;
 
     const inserted = await this.client

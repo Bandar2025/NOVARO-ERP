@@ -125,7 +125,7 @@ export class CommerceService {
           date: invoiceDate,
           reference: invoiceId,
           notes: `Automated Sales Recognition for Invoice ${invoiceId} (${dto.type})`,
-          items: salesLines.map((l, i) => ({ id: `jei-sales-${i}`, ...l })),
+          items: salesLines.map((l, i) => ({ id: `jei-sales-${invoiceId}-${i}`, ...l })),
           workflowStatus: "Posted",
           currency: dto.invoice.currency || Currency.SAR,
           exchangeRate: dto.invoice.exchangeRate || 1
@@ -158,7 +158,7 @@ export class CommerceService {
             date: invoiceDate,
             reference: invoiceId,
             notes: `Automated COGS deduction for Invoice ${invoiceId}`,
-            items: cogsLines.map((l, i) => ({ id: `jei-cogs-${i}`, ...l })),
+            items: cogsLines.map((l, i) => ({ id: `jei-cogs-${invoiceId}-${i}`, ...l })),
             workflowStatus: "Posted",
             currency: dto.invoice.currency || Currency.SAR,
             exchangeRate: dto.invoice.exchangeRate || 1
@@ -293,7 +293,7 @@ export class CommerceService {
           date: receiptDate,
           reference: po.id,
           notes: `Automated Goods Receipt Allocation for PO ${po.id}`,
-          items: purchaseLines.map((l, i) => ({ id: `jei-po-${i}`, ...l })),
+          items: purchaseLines.map((l, i) => ({ id: `jei-po-${po.id}-${i}`, ...l })),
           workflowStatus: "Posted",
           currency: po.currency || Currency.SAR,
           exchangeRate: po.exchangeRate || 1

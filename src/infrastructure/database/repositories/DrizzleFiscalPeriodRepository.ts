@@ -11,7 +11,7 @@ export class DrizzleFiscalPeriodRepository implements FiscalPeriodRepository {
   async getAll(options?: QueryOptions): Promise<FiscalPeriod[]> {
     const { tenantId, companyId } = extractTenantContext(options);
 
-    const rows = await this.client
+    let query = this.client
       .select()
       .from(fiscalPeriods)
       .where(
@@ -19,8 +19,14 @@ export class DrizzleFiscalPeriodRepository implements FiscalPeriodRepository {
           eq(fiscalPeriods.tenantId, tenantId),
           eq(fiscalPeriods.companyId, companyId)
         )
-      );
+      )
+      .orderBy(fiscalPeriods.id);
 
+    if (options?.forUpdate) {
+      query = query.for("update");
+    }
+
+    const rows = await query;
     return rows.map(r => this.mapToDomain(r));
   }
 

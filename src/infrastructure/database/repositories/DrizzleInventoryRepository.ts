@@ -110,15 +110,25 @@ export class DrizzleInventoryRepository implements InventoryRepository {
   async getBatches(options?: QueryOptions): Promise<Batch[]> {
     const { tenantId, companyId } = extractTenantContext(options);
 
-    const rows = await this.client
+    const conditions = [
+      eq(stockBatches.tenantId, tenantId),
+      eq(stockBatches.companyId, companyId)
+    ];
+    if (options?.itemId) {
+      conditions.push(eq(stockBatches.itemId, options.itemId));
+    }
+
+    let query = this.client
       .select()
       .from(stockBatches)
-      .where(
-        and(
-          eq(stockBatches.tenantId, tenantId),
-          eq(stockBatches.companyId, companyId)
-        )
-      );
+      .where(and(...conditions))
+      .orderBy(stockBatches.id);
+
+    if (options?.forUpdate) {
+      query = query.for("update");
+    }
+
+    const rows = await query;
 
     return rows.map(r => this.mapBatchToDomain(r));
   }
@@ -245,15 +255,25 @@ export class DrizzleInventoryRepository implements InventoryRepository {
   async getCostLayers(options?: QueryOptions): Promise<CostLayer[]> {
     const { tenantId, companyId } = extractTenantContext(options);
 
-    const rows = await this.client
+    const conditions = [
+      eq(costLayers.tenantId, tenantId),
+      eq(costLayers.companyId, companyId)
+    ];
+    if (options?.itemId) {
+      conditions.push(eq(costLayers.itemId, options.itemId));
+    }
+
+    let query = this.client
       .select()
       .from(costLayers)
-      .where(
-        and(
-          eq(costLayers.tenantId, tenantId),
-          eq(costLayers.companyId, companyId)
-        )
-      );
+      .where(and(...conditions))
+      .orderBy(costLayers.dateReceived, costLayers.id);
+
+    if (options?.forUpdate) {
+      query = query.for("update");
+    }
+
+    const rows = await query;
 
     return rows.map(r => this.mapCostLayerToDomain(r));
   }

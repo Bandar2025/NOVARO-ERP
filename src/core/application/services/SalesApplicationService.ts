@@ -72,13 +72,18 @@ export class SalesApplicationService {
           }))
         };
 
-        const batches = await uow.inventory.getBatches({ context });
-        const costLayers = await uow.inventory.getCostLayers({ context });
+        // 1. Lock items, batches, cost layers, and fiscal periods for update to prevent concurrent stock race conditions
+        for (const item of dto.items) {
+          await uow.inventory.getItemByIdForUpdate(item.itemId, context);
+        }
+
+        const batches = await uow.inventory.getBatches({ context, forUpdate: true });
+        const costLayers = await uow.inventory.getCostLayers({ context, forUpdate: true });
         const movements = await uow.inventory.getMovements({ context });
 
         const journalEntries = await uow.journalEntries.getAll({ context });
         const customers = await uow.customers.getAll({ context });
-        const fiscalPeriods = await uow.fiscalPeriods.getAll({ context });
+        const fiscalPeriods = await uow.fiscalPeriods.getAll({ context, forUpdate: true });
 
 
         const executionDTO: SalesInvoiceExecutionDTO = {

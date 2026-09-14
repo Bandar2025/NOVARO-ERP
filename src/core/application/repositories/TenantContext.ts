@@ -10,4 +10,6 @@ export interface QueryOptions {
   limit?: number;
   offset?: number;
   search?: string;
+  forUpdate?: boolean;
+  itemId?: string;
 }
