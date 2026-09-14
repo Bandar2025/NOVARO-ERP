@@ -20,9 +20,11 @@ async function runPostgresRealCertification() {
   console.log("PostgreSQL server URL detected. Executing real PostgreSQL tests...\n");
 
   try {
+    execSync("npx tsx tests/providerContractTest.ts", { stdio: "inherit", env: process.env });
     execSync("npx tsx tests/phase2dR1SecuritySuite.ts", { stdio: "inherit", env: process.env });
     execSync("npx tsx tests/certificationSuite.ts", { stdio: "inherit", env: process.env });
     execSync("npx tsx tests/schemaParityTest.ts", { stdio: "inherit", env: process.env });
+    execSync("npx tsx tests/syncQueueNegativeTest.ts", { stdio: "inherit", env: process.env });
     execSync("npx tsx tests/rateLimiterTest.ts", { stdio: "inherit", env: process.env });
     execSync("npx tsx tests/loginConcurrencyTest.ts", { stdio: "inherit", env: process.env });
     execSync("npx tsx tests/refreshTokenConcurrencyTest.ts", { stdio: "inherit", env: process.env });

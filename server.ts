@@ -20,9 +20,6 @@ import { errorHandler } from "./server/middleware/errorHandler";
 import { authenticateToken, requirePermission, AuthRequest } from "./server/middleware/authMiddleware";
 
 dotenv.config();
-if (!process.env.DATABASE_PROVIDER) {
-  process.env.DATABASE_PROVIDER = "pglite";
-}
 
 // Lazy initialization of GoogleGenAI to ensure the app boots even if the key is momentarily missing
 let aiClient: GoogleGenAI | null = null;

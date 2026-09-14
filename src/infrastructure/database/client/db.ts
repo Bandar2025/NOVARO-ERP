@@ -22,19 +22,19 @@ function resolveDatabaseConfig(): DatabaseConfig {
   const ssl = process.env.DATABASE_SSL === "true";
   const name = process.env.DATABASE_NAME;
 
-  let provider: DatabaseProvider;
-
   if (!rawProvider) {
-    provider = url ? "postgres" : "pglite";
-  } else if (rawProvider === "postgres" || rawProvider === "pglite") {
-    provider = rawProvider;
-  } else {
+    throw new Error(
+      "FAIL FAST CONFIG ERROR: DATABASE_PROVIDER environment variable is missing. Must be explicitly set to 'pglite' or 'postgres'."
+    );
+  }
+
+  if (rawProvider !== "pglite" && rawProvider !== "postgres") {
     throw new Error(
       `FAIL FAST CONFIG ERROR: Invalid DATABASE_PROVIDER '${rawProvider}'. Must be explicitly set to 'pglite' or 'postgres'.`
     );
   }
 
-  if (provider === "postgres") {
+  if (rawProvider === "postgres") {
     if (!url) {
       throw new Error(
         "FAIL FAST CONFIG ERROR: DATABASE_PROVIDER is set to 'postgres', but DATABASE_URL environment variable is missing."
