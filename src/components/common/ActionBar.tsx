@@ -1,5 +1,5 @@
 import React from "react";
-import GlobalActionBar from "./GlobalActionBar";
+import GlobalActionBar, { ActionItem } from "./GlobalActionBar";
 
 interface ActionBarProps {
   searchQuery?: string;
@@ -40,13 +40,6 @@ export default function ActionBar({
       isFiltered={isFiltered}
       language={language}
       className={className}
-      extraActions={rightActions ? [{
-        id: "legacy_custom_actions",
-        labelAr: "إجراءات إضافية",
-        labelEn: "Extra Actions",
-        onClick: () => {},
-        variant: "secondary"
-      }] : []}
     />
   );
 }
