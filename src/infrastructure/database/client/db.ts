@@ -2,6 +2,7 @@ import { drizzle as drizzleNodePg } from "drizzle-orm/node-postgres";
 import { drizzle as drizzlePglite } from "drizzle-orm/pglite";
 import { PGlite } from "@electric-sql/pglite";
 import pg from "pg";
+import dotenv from "dotenv";
 import * as schema from "../schema";
 import { INIT_SCHEMA_SQL } from "./initSchema";
 
@@ -16,6 +17,7 @@ export interface DatabaseConfig {
 }
 
 function resolveDatabaseConfig(): DatabaseConfig {
+  dotenv.config({ path: [".env", ".env.example"] });
   const rawProvider = (process.env.DATABASE_PROVIDER || "").toLowerCase().trim();
   const url = process.env.DATABASE_URL;
   const poolMax = parseInt(process.env.DATABASE_POOL_MAX || "10", 10);
