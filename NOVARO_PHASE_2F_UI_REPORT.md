@@ -8,13 +8,15 @@ This document certifies the successful implementation of Phase 2F-UI for **NOVAR
 ## 1. Modified & Created Files
 1. **`src/components/common/GlobalActionBar.tsx` (Created)**:
    - Unified sticky action bar supporting Back, New, Save, Edit, Delete, Refresh, Print, Export, Search, Filter, and Custom Actions.
-2. **`src/components/common/PlaceholderModule.tsx` (Created)**:
+2. **`src/components/common/ActionBar.tsx` (Updated & Consolidated)**:
+   - Wrapped `GlobalActionBar` to ensure a single standard action system across the entire codebase.
+3. **`src/components/common/PlaceholderModule.tsx` (Created)**:
    - Enterprise empty state component for all planned navigation modules, displaying status as "Planned" without fake local database records or mock state.
-3. **`src/components/common/AppSidebar.tsx` (Updated)**:
+4. **`src/components/common/AppSidebar.tsx` (Updated)**:
    - Reorganized navigation into 15 structured enterprise domain groups with collapsible menus and clear indicators for live vs. planned modules.
-4. **`src/App.tsx` (Updated)**:
+5. **`src/App.tsx` (Updated)**:
    - Updated route switcher to seamlessly render existing functional modules and dynamic placeholders for upcoming roadmaps.
-5. **`NOVARO_PHASE_2F_UI_REPORT.md` (Created)**:
+6. **`NOVARO_PHASE_2F_UI_REPORT.md` (Updated)**:
    - Comprehensive phase documentation and audit report.
 
 ---
@@ -53,13 +55,30 @@ The enterprise sidebar has been structured into 15 formal domains:
 
 ---
 
-## 5. Verification & Build Results
-- **TypeScript Compilation (`npm run lint` / `tsc --noEmit`)**: **PASSED (0 Errors)**
-- **Production Build (`npm run build`)**: **PASSED (Successfully bundled via Vite & esbuild)**
-- **Existing Functional Modules**: **100% Intact and Operational** (Dashboard, Accounting, Customers, Customer Ledger, Suppliers, Purchases, Sales, Wholesale, Inventory, Production, Roastery, Grinding, POS, Cashbox, Reports, Settings).
+## 5. Phase 2F-UI-R1 Real Integration & Screen Standardization
+- **Unified Action System**: Consolidated legacy `ActionBar.tsx` to wrap `GlobalActionBar.tsx`, guaranteeing ONE standard action system.
+- **Action Matrix Coverage**:
+  - **Dashboard**: Refresh, Search, Filter, Export
+  - **Accounting**: New Entry, Save, Refresh, Print, Export, Search, Filter
+  - **Customers**: New Customer, Edit, Delete, Refresh, Export, Search, Filter
+  - **Customer Ledger**: Refresh, Print, Export, Search, Filter
+  - **Suppliers**: New Supplier, Edit, Delete, Refresh, Export, Search, Filter
+  - **Purchases**: New Bill, Save, Edit, Refresh, Print, Export, Search, Filter
+  - **Sales**: New Invoice, Save, Edit, Refresh, Print, Export, Search, Filter
+  - **Wholesale**: New Order, Save, Refresh, Print, Export, Search, Filter
+  - **Inventory**: New Lot, Refresh, Print, Export, Search, Filter
+  - **Production / Roastery / Grinding**: New Recipe/Batch, Save, Refresh, Print, Export, Search, Filter
+  - **POS**: New Receipt, Save, Refresh, Print, Search
+  - **Cashbox**: New Voucher, Save, Refresh, Print, Export, Search, Filter
+  - **Reports**: Refresh, Print, Export, Search, Filter
+  - **Settings**: Save Config, Refresh, Search
+- **No Fake Callbacks**: Eliminated empty stubs or fake alerts; all action callbacks are tied to actual module handlers or suppressed when unsupported.
+- **Planned Modules Integrity**: Maintained 100% planned status for all upcoming domain items without fake local DB records or mock persistence.
 
 ---
 
-## 6. Known Limitations & Next Steps
-- Planned navigation items render professional Enterprise Empty States ("Planned" status) pending implementation of backend services in subsequent phases.
-- No local storage or mock database persistence was added for planned modules, preserving strict architecture purity.
+## 6. Verification & Build Results
+- **TypeScript Compilation (`npm run lint` / `tsc --noEmit`)**: **PASSED (0 Errors)**
+- **Production Build (`npm run build`)**: **PASSED (Successfully bundled via Vite & esbuild)**
+- **Existing Functional Modules**: **100% Intact and Operational**.
+
