@@ -16,12 +16,13 @@ import PosModule from "./components/PosModule";
 import CashboxModule from "./components/CashboxModule";
 import ReportsModule from "./components/ReportsModule";
 import SettingsModule from "./components/SettingsModule";
+import PlaceholderModule from "./components/common/PlaceholderModule";
 
 import AppSidebar, { ActiveSection, DOMAIN_GROUPS } from "./components/common/AppSidebar";
 import AppHeader from "./components/common/AppHeader";
 import ToastNotification from "./components/common/ToastNotification";
 import { motion, AnimatePresence } from "motion/react";
-import { Info, Coffee, ShieldCheck } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 
 export default function App() {
   const [activeSection, setActiveSection] = useState<ActiveSection>("overview");
@@ -37,6 +38,7 @@ export default function App() {
 
   const renderActiveSection = () => {
     switch (activeSection) {
+      // Functional Modules
       case "overview":
         return <DashboardOverview language={language} />;
       case "accounting":
@@ -69,8 +71,36 @@ export default function App() {
         return <ReportsModule language={language} />;
       case "settings":
         return <SettingsModule language={language} />;
-      default:
-        return <DashboardOverview language={language} />;
+
+      // Placeholder / Planned Modules
+      default: {
+        // Find metadata from DOMAIN_GROUPS
+        let titleAr = "وحدة قيد التخطيط";
+        let titleEn = "Planned Module";
+        let domainAr = "نظام نوفارو ERP";
+        let domainEn = "Novaro ERP";
+
+        for (const group of DOMAIN_GROUPS) {
+          const found = group.items.find(item => item.id === activeSection);
+          if (found) {
+            titleAr = found.titleAr;
+            titleEn = found.titleEn;
+            domainAr = group.titleAr;
+            domainEn = group.titleEn;
+            break;
+          }
+        }
+
+        return (
+          <PlaceholderModule
+            titleAr={titleAr}
+            titleEn={titleEn}
+            domainAr={domainAr}
+            domainEn={domainEn}
+            language={language}
+          />
+        );
+      }
     }
   };
 
@@ -178,11 +208,15 @@ export default function App() {
                                       <ItemIcon className="w-4 h-4" />
                                       <span>{isAr ? item.titleAr : item.titleEn}</span>
                                     </div>
-                                    {item.badge && (
+                                    {item.badge ? (
                                       <span className="text-[9px] px-1.5 py-0.5 bg-teal-500/20 text-teal-300 rounded font-mono">
                                         {item.badge}
                                       </span>
-                                    )}
+                                    ) : item.isPlanned ? (
+                                      <span className="text-[8px] px-1.5 py-0.5 bg-slate-900 text-slate-500 rounded">
+                                        {isAr ? "مخطط" : "Planned"}
+                                      </span>
+                                    ) : null}
                                   </button>
                                 );
                               })}

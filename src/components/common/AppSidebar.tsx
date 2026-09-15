@@ -3,7 +3,12 @@ import {
   Layers, BookOpen, ShoppingCart, Truck, Package, Flame, 
   Landmark, Settings, ChevronDown, ChevronRight, ChevronLeft,
   Users, FileText, ChevronFirst, ChevronLast, Sparkles, Coffee,
-  Sliders, ShieldCheck, Database, Receipt, Store
+  Sliders, ShieldCheck, Database, Receipt, Store, Building2,
+  Calendar, FileSpreadsheet, Briefcase, FolderKanban, Users2,
+  FileCheck, ReceiptText, Tag, Warehouse, Boxes, Calculator,
+  QrCode, History, HardDrive, RefreshCcw, Coins, CreditCard,
+  Wallet, Percent, BadgePercent, FileBarChart, Kanban, Network,
+  UserCog, Key, FileDigit, FileSearch, Layers3, Landmark as BankIcon
 } from "lucide-react";
 
 export type ActiveSection = 
@@ -22,7 +27,52 @@ export type ActiveSection =
   | "pos" 
   | "cashbox"
   | "reports"
-  | "settings";
+  | "settings"
+  | "banks"
+  | "bank_transactions"
+  | "bank_reconciliation"
+  | "sales_quotations"
+  | "sales_orders"
+  | "delivery_notes"
+  | "sales_returns"
+  | "price_lists"
+  | "purchase_requests"
+  | "rfq"
+  | "purchase_orders"
+  | "goods_receipt"
+  | "purchase_returns"
+  | "items"
+  | "warehouses"
+  | "stock_count"
+  | "stock_transfers"
+  | "stock_adjustments"
+  | "stock_valuation"
+  | "fixed_assets"
+  | "depreciation"
+  | "customer_aging"
+  | "supplier_aging"
+  | "vat_config"
+  | "e_invoicing"
+  | "zatca"
+  | "crm_leads"
+  | "crm_opportunities"
+  | "crm_activities"
+  | "projects"
+  | "cost_centers"
+  | "hr_employees"
+  | "hr_attendance"
+  | "hr_leave"
+  | "hr_payroll"
+  | "admin_companies"
+  | "admin_branches"
+  | "admin_fiscal_years"
+  | "admin_fiscal_periods"
+  | "admin_users"
+  | "admin_roles"
+  | "admin_numbering"
+  | "admin_audit_log"
+  | "admin_backup"
+  | "admin_sync_status";
 
 export interface DomainGroup {
   id: string;
@@ -35,6 +85,7 @@ export interface DomainGroup {
     titleEn: string;
     icon: React.ComponentType<{ className?: string }>;
     badge?: string;
+    isPlanned?: boolean;
   }[];
 }
 
@@ -75,9 +126,44 @@ export const DOMAIN_GROUPS: DomainGroup[] = [
     ]
   },
   {
+    id: "treasury_domain",
+    titleAr: "الخزينة والبنوك",
+    titleEn: "Treasury & Banks",
+    icon: Landmark,
+    items: [
+      {
+        id: "cashbox",
+        titleAr: "محطة الصندوق وسندات النقد",
+        titleEn: "Cashbox & Vouchers",
+        icon: Wallet
+      },
+      {
+        id: "banks",
+        titleAr: "الحسابات البنكية",
+        titleEn: "Bank Accounts",
+        icon: BankIcon,
+        isPlanned: true
+      },
+      {
+        id: "bank_transactions",
+        titleAr: "الحركات البنكية",
+        titleEn: "Bank Transactions",
+        icon: CreditCard,
+        isPlanned: true
+      },
+      {
+        id: "bank_reconciliation",
+        titleAr: "المطابقة البنكية",
+        titleEn: "Bank Reconciliation",
+        icon: FileCheck,
+        isPlanned: true
+      }
+    ]
+  },
+  {
     id: "sales_domain",
-    titleAr: "المبيعات والعملاء",
-    titleEn: "Sales & Customers",
+    titleAr: "المبيعات",
+    titleEn: "Sales",
     icon: ShoppingCart,
     items: [
       {
@@ -99,6 +185,49 @@ export const DOMAIN_GROUPS: DomainGroup[] = [
         icon: Receipt
       },
       {
+        id: "sales_quotations",
+        titleAr: "عروض الأسعار",
+        titleEn: "Sales Quotations",
+        icon: FileText,
+        isPlanned: true
+      },
+      {
+        id: "sales_orders",
+        titleAr: "أوامر المبيعات",
+        titleEn: "Sales Orders",
+        icon: ReceiptText,
+        isPlanned: true
+      },
+      {
+        id: "delivery_notes",
+        titleAr: "إذونات التسليم",
+        titleEn: "Delivery Notes",
+        icon: Truck,
+        isPlanned: true
+      },
+      {
+        id: "sales_returns",
+        titleAr: "مرتجعات المبيعات",
+        titleEn: "Sales Returns",
+        icon: History,
+        isPlanned: true
+      },
+      {
+        id: "price_lists",
+        titleAr: "قوائم الأسعار",
+        titleEn: "Price Lists",
+        icon: Tag,
+        isPlanned: true
+      }
+    ]
+  },
+  {
+    id: "customers_domain",
+    titleAr: "العملاء",
+    titleEn: "Customers",
+    icon: Users,
+    items: [
+      {
         id: "customers",
         titleAr: "دليل العملاء",
         titleEn: "Customers Directory",
@@ -113,9 +242,9 @@ export const DOMAIN_GROUPS: DomainGroup[] = [
     ]
   },
   {
-    id: "purchases_domain",
-    titleAr: "المشتريات والموردين",
-    titleEn: "Purchases & Suppliers",
+    id: "purchasing_domain",
+    titleAr: "المشتريات",
+    titleEn: "Purchasing",
     icon: Truck,
     items: [
       {
@@ -125,10 +254,53 @@ export const DOMAIN_GROUPS: DomainGroup[] = [
         icon: Truck
       },
       {
+        id: "purchase_requests",
+        titleAr: "طلبات الشراء",
+        titleEn: "Purchase Requests",
+        icon: FileText,
+        isPlanned: true
+      },
+      {
+        id: "rfq",
+        titleAr: "عروض أسعار الموردين",
+        titleEn: "RFQ (Quotations)",
+        icon: FileSearch,
+        isPlanned: true
+      },
+      {
+        id: "purchase_orders",
+        titleAr: "أوامر الشراء",
+        titleEn: "Purchase Orders",
+        icon: ReceiptText,
+        isPlanned: true
+      },
+      {
+        id: "goods_receipt",
+        titleAr: "استلام البضائع",
+        titleEn: "Goods Receipt Note",
+        icon: Package,
+        isPlanned: true
+      },
+      {
+        id: "purchase_returns",
+        titleAr: "مرتجعات المشتريات",
+        titleEn: "Purchase Returns",
+        icon: History,
+        isPlanned: true
+      }
+    ]
+  },
+  {
+    id: "suppliers_domain",
+    titleAr: "الموردين",
+    titleEn: "Suppliers",
+    icon: Users2,
+    items: [
+      {
         id: "suppliers",
         titleAr: "دليل الموردين",
         titleEn: "Suppliers Directory",
-        icon: Users
+        icon: Users2
       }
     ]
   },
@@ -143,13 +315,55 @@ export const DOMAIN_GROUPS: DomainGroup[] = [
         titleAr: "إدارة المخزون وFIFO",
         titleEn: "Warehouse & FIFO Lots",
         icon: Package
+      },
+      {
+        id: "items",
+        titleAr: "دليل الأصناف",
+        titleEn: "Items Master",
+        icon: Boxes,
+        isPlanned: true
+      },
+      {
+        id: "warehouses",
+        titleAr: "المستودعات والمواقع",
+        titleEn: "Warehouses & Locations",
+        icon: Warehouse,
+        isPlanned: true
+      },
+      {
+        id: "stock_count",
+        titleAr: "جرد المخزون",
+        titleEn: "Stock Count (Physical)",
+        icon: Calculator,
+        isPlanned: true
+      },
+      {
+        id: "stock_transfers",
+        titleAr: "تحويلات المستودعات",
+        titleEn: "Stock Transfers",
+        icon: Network,
+        isPlanned: true
+      },
+      {
+        id: "stock_adjustments",
+        titleAr: "تسويات المخزون",
+        titleEn: "Stock Adjustments",
+        icon: Sliders,
+        isPlanned: true
+      },
+      {
+        id: "stock_valuation",
+        titleAr: "تقييم المخزون",
+        titleEn: "Stock Valuation",
+        icon: FileBarChart,
+        isPlanned: true
       }
     ]
   },
   {
     id: "manufacturing_domain",
     titleAr: "الإنتاج والتصنيع",
-    titleEn: "Manufacturing & Processing",
+    titleEn: "Manufacturing",
     icon: Flame,
     items: [
       {
@@ -173,30 +387,238 @@ export const DOMAIN_GROUPS: DomainGroup[] = [
     ]
   },
   {
-    id: "treasury_domain",
-    titleAr: "الخزينة والنقدية",
-    titleEn: "Treasury & Cashbox",
-    icon: Landmark,
+    id: "fixed_assets_domain",
+    titleAr: "الأصول الثابتة",
+    titleEn: "Fixed Assets",
+    icon: Building2,
     items: [
       {
-        id: "cashbox",
-        titleAr: "محطة الصندوق وسندات النقد",
-        titleEn: "Cashbox & Vouchers",
-        icon: Landmark
+        id: "fixed_assets",
+        titleAr: "دليل الأصول الثابتة",
+        titleEn: "Fixed Assets Directory",
+        icon: Building2,
+        isPlanned: true
+      },
+      {
+        id: "depreciation",
+        titleAr: "حساب وإهلاك الأصول",
+        titleEn: "Depreciation Schedules",
+        icon: Calculator,
+        isPlanned: true
+      },
+      {
+        id: "customer_aging",
+        titleAr: "أعمار ديون العملاء",
+        titleEn: "Customer Aging Report",
+        icon: FileBarChart,
+        isPlanned: true
+      },
+      {
+        id: "supplier_aging",
+        titleAr: "أعمار ذمم الموردين",
+        titleEn: "Supplier Aging Report",
+        icon: FileBarChart,
+        isPlanned: true
       }
     ]
   },
   {
-    id: "settings_domain",
-    titleAr: "الإعدادات والتدقيق",
-    titleEn: "Settings & System",
+    id: "tax_domain",
+    titleAr: "الضرائب والامتثال",
+    titleEn: "Tax & Compliance",
+    icon: Percent,
+    items: [
+      {
+        id: "vat_config",
+        titleAr: "إعدادات ضريبة القيمة المضافة",
+        titleEn: "VAT Configuration",
+        icon: Percent,
+        isPlanned: true
+      },
+      {
+        id: "e_invoicing",
+        titleAr: "الفوترة الإلكترونية",
+        titleEn: "E-Invoicing Fatoora",
+        icon: QrCode,
+        isPlanned: true
+      },
+      {
+        id: "zatca",
+        titleAr: "متطلبات هيئة الزكاة (ZATCA)",
+        titleEn: "ZATCA Integration Phase 2",
+        icon: ShieldCheck,
+        isPlanned: true
+      }
+    ]
+  },
+  {
+    id: "crm_domain",
+    titleAr: "إدارة علاقات العملاء (CRM)",
+    titleEn: "CRM",
+    icon: UserCog,
+    items: [
+      {
+        id: "crm_leads",
+        titleAr: "العملاء المحتملون (Leads)",
+        titleEn: "Sales Leads",
+        icon: Users,
+        isPlanned: true
+      },
+      {
+        id: "crm_opportunities",
+        titleAr: "الفرص البيعية",
+        titleEn: "Opportunities",
+        icon: Sparkles,
+        isPlanned: true
+      },
+      {
+        id: "crm_activities",
+        titleAr: "الأنشطة والمهام",
+        titleEn: "Activities & Follow-ups",
+        icon: Calendar,
+        isPlanned: true
+      }
+    ]
+  },
+  {
+    id: "projects_domain",
+    titleAr: "المشاريع ومراكز التكلفة",
+    titleEn: "Projects",
+    icon: FolderKanban,
+    items: [
+      {
+        id: "projects",
+        titleAr: "إدارة المشاريع",
+        titleEn: "Projects Portfolio",
+        icon: FolderKanban,
+        isPlanned: true
+      },
+      {
+        id: "cost_centers",
+        titleAr: "مراكز التكلفة المتقدمة",
+        titleEn: "Advanced Cost Centers",
+        icon: Kanban,
+        isPlanned: true
+      }
+    ]
+  },
+  {
+    id: "hr_domain",
+    titleAr: "الموارد البشرية والرواتب",
+    titleEn: "HR & Payroll",
+    icon: Users2,
+    items: [
+      {
+        id: "hr_employees",
+        titleAr: "سجلات الموظفين",
+        titleEn: "Employees Directory",
+        icon: Users,
+        isPlanned: true
+      },
+      {
+        id: "hr_attendance",
+        titleAr: "الحضور والانصراف",
+        titleEn: "Attendance & Shifts",
+        icon: Calendar,
+        isPlanned: true
+      },
+      {
+        id: "hr_leave",
+        titleAr: "الإجازات والأذونات",
+        titleEn: "Leave Management",
+        icon: FileText,
+        isPlanned: true
+      },
+      {
+        id: "hr_payroll",
+        titleAr: "مسير الرواتب",
+        titleEn: "Payroll Processing",
+        icon: Coins,
+        isPlanned: true
+      }
+    ]
+  },
+  {
+    id: "admin_domain",
+    titleAr: "إدارة النظام والرقابة",
+    titleEn: "System Administration",
     icon: Settings,
     items: [
       {
         id: "settings",
-        titleAr: "تهيئة النظام والنسخ الاحتياطي",
-        titleEn: "System Settings & Backup",
+        titleAr: "تهيئة النظام العامة",
+        titleEn: "General Settings & Company",
         icon: Settings
+      },
+      {
+        id: "admin_companies",
+        titleAr: "الشركات والكيانات",
+        titleEn: "Companies Master",
+        icon: Building2,
+        isPlanned: true
+      },
+      {
+        id: "admin_branches",
+        titleAr: "الفروع والمستودعات",
+        titleEn: "Branches Directory",
+        icon: Warehouse,
+        isPlanned: true
+      },
+      {
+        id: "admin_fiscal_years",
+        titleAr: "السنوات المالية",
+        titleEn: "Fiscal Years",
+        icon: Calendar,
+        isPlanned: true
+      },
+      {
+        id: "admin_fiscal_periods",
+        titleAr: "الفترات المحاسبية (إغلاق)",
+        titleEn: "Fiscal Periods (Lock)",
+        icon: History,
+        isPlanned: true
+      },
+      {
+        id: "admin_users",
+        titleAr: "مستخدمو النظام",
+        titleEn: "System Users",
+        icon: Users,
+        isPlanned: true
+      },
+      {
+        id: "admin_roles",
+        titleAr: "الأدوار والصلاحيات",
+        titleEn: "Roles & Permissions",
+        icon: Key,
+        isPlanned: true
+      },
+      {
+        id: "admin_numbering",
+        titleAr: "ترقيم المستندات والتسلسل",
+        titleEn: "Document Sequences",
+        icon: FileDigit,
+        isPlanned: true
+      },
+      {
+        id: "admin_audit_log",
+        titleAr: "سجل التدقيق والمراقبة",
+        titleEn: "Audit Trail & Logs",
+        icon: ShieldCheck,
+        isPlanned: true
+      },
+      {
+        id: "admin_backup",
+        titleAr: "النسخ الاحتياطي والاستعادة",
+        titleEn: "Backup & Restore",
+        icon: HardDrive,
+        isPlanned: true
+      },
+      {
+        id: "admin_sync_status",
+        titleAr: "حالة المزامنة والربط",
+        titleEn: "Sync & Queue Status",
+        icon: RefreshCcw,
+        isPlanned: true
       }
     ]
   }
@@ -219,16 +641,22 @@ export default function AppSidebar({
 }: AppSidebarProps) {
   const isAr = language === "ar";
 
-  // Track expanded domain groups (all open by default)
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
     dashboard: true,
     accounting_domain: true,
+    treasury_domain: true,
     sales_domain: true,
-    purchases_domain: true,
+    customers_domain: true,
+    purchasing_domain: true,
+    suppliers_domain: true,
     inventory_domain: true,
     manufacturing_domain: true,
-    treasury_domain: true,
-    settings_domain: true
+    fixed_assets_domain: false,
+    tax_domain: false,
+    crm_domain: false,
+    projects_domain: false,
+    hr_domain: false,
+    admin_domain: true
   });
 
   const toggleGroup = (groupId: string) => {
@@ -283,7 +711,7 @@ export default function AppSidebar({
       </div>
 
       {/* Navigation Groups List */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-4 custom-scrollbar">
+      <div className="flex-1 overflow-y-auto p-3 space-y-3 custom-scrollbar">
         {DOMAIN_GROUPS.map((group) => {
           const isExpanded = expandedGroups[group.id];
           const hasActiveItem = group.items.some(it => it.id === activeSection);
@@ -301,13 +729,13 @@ export default function AppSidebar({
                       type="button"
                       onClick={() => onSelectSection(item.id)}
                       title={isAr ? item.titleAr : item.titleEn}
-                      className={`w-full h-11 rounded-xl flex items-center justify-center transition-all ${
+                      className={`w-full h-10 rounded-xl flex items-center justify-center transition-all ${
                         isActive
                           ? "bg-teal-700 text-white shadow-md shadow-teal-700/30"
                           : "text-slate-400 hover:text-white hover:bg-slate-900"
                       }`}
                     >
-                      <ItemIcon className="w-5 h-5" />
+                      <ItemIcon className="w-4 h-4" />
                     </button>
                   );
                 })}
@@ -317,7 +745,6 @@ export default function AppSidebar({
 
           return (
             <div key={group.id} className="space-y-1">
-              {/* Domain Group Header */}
               <button
                 type="button"
                 onClick={() => toggleGroup(group.id)}
@@ -325,18 +752,17 @@ export default function AppSidebar({
                   hasActiveItem ? "text-teal-400" : "text-slate-500 hover:text-slate-300"
                 }`}
               >
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 min-w-0">
                   <GroupIcon className="w-3.5 h-3.5 flex-shrink-0 opacity-80" />
                   <span className="truncate">{isAr ? group.titleAr : group.titleEn}</span>
                 </div>
                 {isExpanded ? (
-                  <ChevronDown className="w-3.5 h-3.5" />
+                  <ChevronDown className="w-3.5 h-3.5 flex-shrink-0" />
                 ) : (
-                  isAr ? <ChevronLeft className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />
+                  isAr ? <ChevronLeft className="w-3.5 h-3.5 flex-shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 flex-shrink-0" />
                 )}
               </button>
 
-              {/* Submodule Items */}
               {isExpanded && (
                 <div className="space-y-0.5 pr-2 pl-2">
                   {group.items.map((item) => {
@@ -361,11 +787,15 @@ export default function AppSidebar({
                           />
                           <span className="truncate">{isAr ? item.titleAr : item.titleEn}</span>
                         </div>
-                        {item.badge && (
+                        {item.badge ? (
                           <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md bg-teal-950 text-teal-300 border border-teal-800 flex-shrink-0">
                             {item.badge}
                           </span>
-                        )}
+                        ) : item.isPlanned ? (
+                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-900 text-slate-500 border border-slate-800 flex-shrink-0">
+                            {isAr ? "مخطط" : "Planned"}
+                          </span>
+                        ) : null}
                       </button>
                     );
                   })}
