@@ -111,8 +111,33 @@ export default function GlobalActionBar({
   const isAr = language === "ar";
   const defaultSearchPlaceholder = isAr ? "🔎 بحث متقدم في السجلات..." : "🔎 Advanced record search...";
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const menuRef = React.useRef<HTMLDivElement>(null);
 
   const BackIcon = isAr ? ArrowRight : ArrowLeft;
+
+  // Close More Menu on outside click or ESC key
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMoreMenuOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMoreMenuOpen(false);
+      }
+    };
+    if (moreMenuOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      document.addEventListener("keydown", handleKeyDown);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [moreMenuOpen]);
+
+  const hasSecondaryActions = Boolean(onRefresh || onPrint || onExport || extraActions.length > 0);
 
   return (
     <div
@@ -220,6 +245,74 @@ export default function GlobalActionBar({
             >
               <Download className="w-4 h-4" />
             </button>
+          )}
+
+          {/* More Dropdown Menu */}
+          {hasSecondaryActions && (
+            <div className="relative" ref={menuRef}>
+              <button
+                type="button"
+                onClick={() => setMoreMenuOpen(!moreMenuOpen)}
+                title={isAr ? "المزيد من الإجراءات" : "More Actions"}
+                className="p-2 rounded-lg border border-slate-250 text-slate-700 bg-white hover:bg-slate-50 transition-colors flex items-center gap-1 shadow-2xs"
+              >
+                <MoreVertical className="w-4 h-4" />
+                <span className="text-xs font-bold hidden sm:inline">{isAr ? "المزيد" : "More"}</span>
+              </button>
+
+              {moreMenuOpen && (
+                <div className={`absolute ${isAr ? "left-0" : "right-0"} mt-1.5 w-52 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 animate-fade-in`}>
+                  <div className="px-3 py-1.5 border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    {isAr ? "الإجراءات والعمليات" : "Actions & Operations"}
+                  </div>
+                  {onRefresh && (
+                    <button
+                      type="button"
+                      onClick={() => { onRefresh(); setMoreMenuOpen(false); }}
+                      className="w-full text-right px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5 text-slate-500" />
+                      <span>{isAr ? "تحديث البيانات" : "Refresh Data"}</span>
+                    </button>
+                  )}
+                  {onPrint && (
+                    <button
+                      type="button"
+                      onClick={() => { onPrint(); setMoreMenuOpen(false); }}
+                      className="w-full text-right px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors"
+                    >
+                      <Printer className="w-3.5 h-3.5 text-slate-500" />
+                      <span>{isAr ? "طباعة المستند" : "Print Document"}</span>
+                    </button>
+                  )}
+                  {onExport && (
+                    <button
+                      type="button"
+                      onClick={() => { onExport(); setMoreMenuOpen(false); }}
+                      className="w-full text-right px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors"
+                    >
+                      <Download className="w-3.5 h-3.5 text-slate-500" />
+                      <span>{isAr ? "تصدير السجلات" : "Export Records"}</span>
+                    </button>
+                  )}
+                  {extraActions.map((act) => {
+                    const ActIcon = act.icon;
+                    return (
+                      <button
+                        key={act.id}
+                        type="button"
+                        onClick={() => { act.onClick(); setMoreMenuOpen(false); }}
+                        disabled={act.disabled}
+                        className="w-full text-right px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors disabled:opacity-50"
+                      >
+                        {ActIcon && <ActIcon className="w-3.5 h-3.5 text-slate-500" />}
+                        <span>{isAr ? act.labelAr : act.labelEn}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           )}
 
           {onEdit && (

@@ -4,6 +4,7 @@ import { Customer } from "../types";
 import { Users, Mail, Phone, MapPin, Landmark, ShieldAlert, Plus, Trash2, Edit3, Eye } from "lucide-react";
 import ERPTable, { ColumnDef } from "./common/ERPTable";
 import PageHeader from "./common/PageHeader";
+import GlobalActionBar from "./common/GlobalActionBar";
 import ConfirmDialog from "./common/ConfirmDialog";
 import FormSection from "./common/FormSection";
 import FormField from "./common/FormField";
@@ -178,15 +179,18 @@ export default function CustomersModule({ language = "ar" }: CustomersModuleProp
           { label: "المبيعات والعملاء", labelEn: "Sales & CRM" },
           { label: "دليل العملاء", labelEn: "Customer Directory", active: true }
         ]}
-        primaryAction={{
-          label: "إضافة عميل جديد",
-          labelEn: "New Customer",
-          onClick: () => {
-            if (showForm) handleCloseForm();
-            else setShowForm(true);
-          },
-          icon: Plus
+        language={language}
+      />
+
+      {/* Global Action Bar */}
+      <GlobalActionBar
+        onNew={() => {
+          if (showForm) handleCloseForm();
+          else setShowForm(true);
         }}
+        newLabelAr="إضافة عميل جديد"
+        newLabelEn="New Customer"
+        totalCount={customers.length}
         language={language}
       />
 
