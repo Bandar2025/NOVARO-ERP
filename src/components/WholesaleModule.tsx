@@ -3,6 +3,7 @@ import { useAppState } from "../context/StateContext";
 import { ShoppingCart, TrendingUp, DollarSign, Calendar, Truck, UserCheck, Plus, Trash2, Printer, CheckCircle } from "lucide-react";
 import ERPTable, { ColumnDef } from "./common/ERPTable";
 import PageHeader from "./common/PageHeader";
+import GlobalActionBar from "./common/GlobalActionBar";
 import StatusBadge from "./common/StatusBadge";
 import EmptyState from "./common/EmptyState";
 
@@ -196,6 +197,16 @@ export default function WholesaleModule({ language = "ar" }: WholesaleModuleProp
             active: true 
           }
         ]}
+        language={language}
+      />
+
+      {/* Global Action Bar */}
+      <GlobalActionBar
+        onNew={() => setActiveTab("billing")}
+        newLabelAr="فاتورة جملة جديدة"
+        newLabelEn="New Wholesale Invoice"
+        totalCount={salesInvoices.length}
+        pageId="wholesale"
         language={language}
       />
 

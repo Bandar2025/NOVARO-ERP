@@ -1,6 +1,8 @@
 import React from "react";
 import GlobalActionBar, { ActionItem } from "./GlobalActionBar";
 
+export type { ActionItem };
+
 interface ActionBarProps {
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
@@ -8,7 +10,6 @@ interface ActionBarProps {
   totalCount?: number;
   filteredCount?: number;
   filterComponent?: React.ReactNode;
-  rightActions?: React.ReactNode;
   onResetFilters?: () => void;
   isFiltered?: boolean;
   language?: "ar" | "en";
@@ -22,7 +23,6 @@ export default function ActionBar({
   totalCount,
   filteredCount,
   filterComponent,
-  rightActions,
   onResetFilters,
   isFiltered = false,
   language = "ar",

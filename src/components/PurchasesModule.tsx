@@ -4,6 +4,7 @@ import { PurchaseOrderItem } from "../types";
 import { Plus, Check, Trash2, Printer, Truck, Calendar, Eye, X, PackageCheck } from "lucide-react";
 import ERPTable, { ColumnDef } from "./common/ERPTable";
 import PageHeader from "./common/PageHeader";
+import GlobalActionBar from "./common/GlobalActionBar";
 import ConfirmDialog from "./common/ConfirmDialog";
 import FormSection from "./common/FormSection";
 import FormField from "./common/FormField";
@@ -192,12 +193,16 @@ export default function PurchasesModule({ language = "ar" }: PurchasesModuleProp
           { label: "المشتريات والموردين", labelEn: "Purchases & SRM" },
           { label: "أوامر الشراء", labelEn: "Purchase Orders", active: true }
         ]}
-        primaryAction={{
-          label: "أمر شراء جديد",
-          labelEn: "New Purchase Order",
-          onClick: () => setShowNewPO(true),
-          icon: Plus
-        }}
+        language={language}
+      />
+
+      {/* Global Action Bar */}
+      <GlobalActionBar
+        onNew={() => setShowNewPO(true)}
+        newLabelAr="أمر شراء جديد"
+        newLabelEn="New Purchase Order"
+        pageId="purchases"
+        totalCount={purchaseOrders.length}
         language={language}
       />
 

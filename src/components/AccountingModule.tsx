@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import ERPTable, { ColumnDef } from "./common/ERPTable";
 import PageHeader from "./common/PageHeader";
+import GlobalActionBar from "./common/GlobalActionBar";
 import StatusBadge from "./common/StatusBadge";
 import FormSection from "./common/FormSection";
 import FormField from "./common/FormField";
@@ -431,6 +432,16 @@ export default function AccountingModule({ language = "ar" }: AccountingModulePr
             active: true 
           }
         ]}
+        language={language}
+      />
+
+      {/* Global Action Bar */}
+      <GlobalActionBar
+        onNew={() => setActiveSubTab("je")}
+        newLabelAr="إنشاء قيد يومية"
+        newLabelEn="New Journal Voucher"
+        totalCount={journalEntries.length}
+        pageId="accounting"
         language={language}
       />
 

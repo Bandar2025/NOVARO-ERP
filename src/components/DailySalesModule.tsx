@@ -3,6 +3,7 @@ import { useAppState } from "../context/StateContext";
 import { ShoppingBag, CreditCard, RefreshCw, Clipboard, ArrowRightLeft, User, Search, Plus, Trash2, Printer, CheckCircle, AlertTriangle, ShoppingCart } from "lucide-react";
 import ERPTable, { ColumnDef } from "./common/ERPTable";
 import PageHeader from "./common/PageHeader";
+import GlobalActionBar from "./common/GlobalActionBar";
 
 interface DailySalesProps {
   language?: "ar" | "en";
@@ -326,6 +327,16 @@ export default function DailySalesModule({ language = "ar" }: DailySalesProps) {
             active: true 
           }
         ]}
+        language={language}
+      />
+
+      {/* Global Action Bar */}
+      <GlobalActionBar
+        onNew={() => setActiveTab("pos")}
+        newLabelAr="نقطة بيع فورية جديدة"
+        newLabelEn="New POS Sale"
+        totalCount={salesInvoices.length}
+        pageId="daily_sales"
         language={language}
       />
 

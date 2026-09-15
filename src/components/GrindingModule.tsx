@@ -3,6 +3,7 @@ import { useAppState } from "../context/StateContext";
 import { Layers2, Plus, Trash2, CheckCircle, Sliders, DollarSign, Calendar } from "lucide-react";
 import ERPTable, { ColumnDef } from "./common/ERPTable";
 import PageHeader from "./common/PageHeader";
+import GlobalActionBar from "./common/GlobalActionBar";
 import ConfirmDialog from "./common/ConfirmDialog";
 
 interface GrindingModuleProps {
@@ -180,6 +181,18 @@ export default function GrindingModule({ language = "ar" }: GrindingModuleProps)
             active: true 
           }
         ]}
+        language={language}
+      />
+
+      {/* Global Action Bar */}
+      <GlobalActionBar
+        onNew={() => {
+          if (activeTab !== "production") setActiveTab("production");
+        }}
+        newLabelAr="تسجيل أمر طحن"
+        newLabelEn="New Grinding Job"
+        totalCount={grindingJobs.length}
+        pageId="grinding"
         language={language}
       />
 

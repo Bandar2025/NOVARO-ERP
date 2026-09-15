@@ -6,6 +6,7 @@ import {
   DollarSign, Tag, Info, UserCheck, RefreshCw, Printer, Landmark, Sparkles
 } from "lucide-react";
 import PageHeader from "./common/PageHeader";
+import GlobalActionBar from "./common/GlobalActionBar";
 
 interface CartItem {
   item: Item;
@@ -209,6 +210,27 @@ export default function PosModule({ language = "ar" }: PosModuleProps) {
           { label: "المبيعات والعملاء", labelEn: "Sales & CRM" },
           { label: "كاشير نقاط البيع", labelEn: "Retail POS Terminal", active: true }
         ]}
+        language={language}
+      />
+
+      {/* Global Action Bar */}
+      <GlobalActionBar
+        onNew={cart.length > 0 ? handleCheckout : undefined}
+        newLabelAr="تسوية ودفع السلة"
+        newLabelEn="Checkout Cart"
+        onPrint={lastReceipt ? printReceipt : undefined}
+        totalCount={cart.length}
+        extraActions={cart.length > 0 ? [
+          {
+            id: "act-clear-cart",
+            labelAr: "تفريغ السلة",
+            labelEn: "Clear Cart",
+            icon: Trash2,
+            variant: "danger",
+            onClick: () => setCart([])
+          }
+        ] : []}
+        pageId="pos"
         language={language}
       />
 

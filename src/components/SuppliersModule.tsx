@@ -4,6 +4,7 @@ import { Supplier } from "../types";
 import { Truck, Mail, Phone, MapPin, Landmark, ShieldCheck, Plus, Trash2, Edit3, Eye } from "lucide-react";
 import ERPTable, { ColumnDef } from "./common/ERPTable";
 import PageHeader from "./common/PageHeader";
+import GlobalActionBar from "./common/GlobalActionBar";
 import ConfirmDialog from "./common/ConfirmDialog";
 import FormSection from "./common/FormSection";
 import FormField from "./common/FormField";
@@ -178,15 +179,19 @@ export default function SuppliersModule({ language = "ar" }: SuppliersModuleProp
           { label: "المشتريات والموردين", labelEn: "Purchases & SRM" },
           { label: "دليل الموردين", labelEn: "Suppliers Directory", active: true }
         ]}
-        primaryAction={{
-          label: "إضافة مورد جديد",
-          labelEn: "New Supplier",
-          onClick: () => {
-            if (showForm) handleCloseForm();
-            else setShowForm(true);
-          },
-          icon: Plus
+        language={language}
+      />
+
+      {/* Global Action Bar */}
+      <GlobalActionBar
+        onNew={() => {
+          if (showForm) handleCloseForm();
+          else setShowForm(true);
         }}
+        newLabelAr="إضافة مورد جديد"
+        newLabelEn="New Supplier"
+        pageId="suppliers"
+        totalCount={suppliers.length}
         language={language}
       />
 

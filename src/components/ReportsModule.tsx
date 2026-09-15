@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import ERPTable, { ColumnDef } from "./common/ERPTable";
 import PageHeader from "./common/PageHeader";
+import GlobalActionBar from "./common/GlobalActionBar";
 import { TrialBalanceRow } from "../core/application/accounting/AccountingEngine";
 
 interface ReportsModuleProps {
@@ -143,26 +144,24 @@ export default function ReportsModule({ language = "ar" }: ReportsModuleProps) {
           }
         ]}
         language={language}
-        actions={
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleRunAudit}
-              className="px-3.5 py-2 bg-teal-50 hover:bg-teal-100 text-teal-800 font-bold text-xs rounded-xl transition flex items-center gap-1.5 border border-teal-200"
-            >
-              <ShieldCheck className="w-4 h-4 text-teal-700" />
-              <span>{isAr ? "فحص السلامة المحاسبية" : "Audit Invariants"}</span>
-            </button>
-            <button
-              type="button"
-              onClick={handlePrint}
-              className="px-4 py-2 bg-slate-900 hover:bg-black text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shadow-xs"
-            >
-              <Printer className="w-4 h-4" />
-              <span>{isAr ? "طباعة التقرير" : "Print Report"}</span>
-            </button>
-          </div>
-        }
+      />
+
+      {/* Global Action Bar */}
+      <GlobalActionBar
+        onPrint={handlePrint}
+        onRefresh={handleRunAudit}
+        extraActions={[
+          {
+            id: "act-audit-invariants",
+            labelAr: "فحص السلامة المحاسبية",
+            labelEn: "Audit Invariants",
+            icon: ShieldCheck,
+            variant: "secondary",
+            onClick: handleRunAudit
+          }
+        ]}
+        pageId="reports"
+        language={language}
       />
 
       {/* Standardized Subnavigation Tabs */}

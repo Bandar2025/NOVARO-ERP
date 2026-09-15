@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import ERPTable, { ColumnDef } from "./common/ERPTable";
 import PageHeader from "./common/PageHeader";
+import GlobalActionBar from "./common/GlobalActionBar";
 import StatusBadge from "./common/StatusBadge";
 import ConfirmDialog from "./common/ConfirmDialog";
 
@@ -340,42 +341,28 @@ export default function InventoryModule({ language = "ar" }: InventoryModuleProp
           }
         ]}
         language={language}
-        actions={
-          <div className="flex items-center gap-2">
-            {activeSubTab === "catalog" && (
-              <button
-                type="button"
-                onClick={() => setShowAddForm(!showAddForm)}
-                className="px-4 py-2 bg-slate-900 hover:bg-black text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-xs transition"
-              >
-                <Plus className="w-4 h-4" />
-                <span>{isAr ? (showAddForm ? "إغلاق النموذج" : "إضافة صنف مخزني") : (showAddForm ? "Close Form" : "Add SKU")}</span>
-              </button>
-            )}
+      />
 
-            {activeSubTab === "adjustments" && (
-              <button
-                type="button"
-                onClick={() => setShowAdjForm(!showAdjForm)}
-                className="px-4 py-2 bg-teal-800 hover:bg-teal-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-xs transition"
-              >
-                <Plus className="w-4 h-4" />
-                <span>{isAr ? (showAdjForm ? "إغلاق النموذج" : "تسوية جردية جديدة") : (showAdjForm ? "Close Form" : "New Adjustment")}</span>
-              </button>
-            )}
-
-            {activeSubTab === "transfers" && (
-              <button
-                type="button"
-                onClick={() => setShowTransForm(!showTransForm)}
-                className="px-4 py-2 bg-slate-900 hover:bg-black text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-xs transition"
-              >
-                <Plus className="w-4 h-4" />
-                <span>{isAr ? (showTransForm ? "إغلاق النموذج" : "أمر تحويل مخزني") : (showTransForm ? "Close Form" : "New Transfer")}</span>
-              </button>
-            )}
-          </div>
+      {/* Global Action Bar */}
+      <GlobalActionBar
+        onNew={
+          activeSubTab === "catalog" ? () => setShowAddForm(!showAddForm) :
+          activeSubTab === "adjustments" ? () => setShowAdjForm(!showAdjForm) :
+          activeSubTab === "transfers" ? () => setShowTransForm(!showTransForm) : undefined
         }
+        newLabelAr={
+          activeSubTab === "catalog" ? (showAddForm ? "إغلاق النموذج" : "إضافة صنف مخزني") :
+          activeSubTab === "adjustments" ? (showAdjForm ? "إغلاق النموذج" : "تسوية جردية جديدة") :
+          activeSubTab === "transfers" ? (showTransForm ? "إغلاق النموذج" : "أمر تحويل مخزني") : "إضافة جديد"
+        }
+        newLabelEn={
+          activeSubTab === "catalog" ? (showAddForm ? "Close Form" : "Add SKU") :
+          activeSubTab === "adjustments" ? (showAdjForm ? "Close Form" : "New Adjustment") :
+          activeSubTab === "transfers" ? (showTransForm ? "Close Form" : "New Transfer") : "New"
+        }
+        pageId="inventory"
+        totalCount={items.length}
+        language={language}
       />
 
       {/* Standardized Secondary Navigation Tabs */}

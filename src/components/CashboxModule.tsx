@@ -3,6 +3,7 @@ import { useAppState } from "../context/StateContext";
 import { Landmark, ArrowUpRight, ArrowDownLeft, ShieldAlert, Plus, Trash2, CheckCircle, FileText, Sparkles, DollarSign } from "lucide-react";
 import ERPTable, { ColumnDef } from "./common/ERPTable";
 import PageHeader from "./common/PageHeader";
+import GlobalActionBar from "./common/GlobalActionBar";
 import ConfirmDialog from "./common/ConfirmDialog";
 import StatusBadge from "./common/StatusBadge";
 
@@ -141,6 +142,16 @@ export default function CashboxModule({ language = "ar" }: CashboxModuleProps) {
             active: true 
           }
         ]}
+        language={language}
+      />
+
+      {/* Global Action Bar */}
+      <GlobalActionBar
+        onNew={() => setActiveTab("vouchers")}
+        newLabelAr="إصدار سند مالي"
+        newLabelEn="Issue Voucher"
+        totalCount={cashboxTransactions.length}
+        pageId="cashbox"
         language={language}
       />
 

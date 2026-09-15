@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useAppState } from "../context/StateContext";
 import { Sliders, Save, Database, RotateCcw } from "lucide-react";
 import PageHeader from "./common/PageHeader";
+import GlobalActionBar from "./common/GlobalActionBar";
 import ConfirmDialog from "./common/ConfirmDialog";
 import FormSection from "./common/FormSection";
 import FormField from "./common/FormField";
@@ -52,6 +53,42 @@ export default function SettingsModule({ language = "ar" }: SettingsProps) {
           { label: "الإعدادات والتدقيق", labelEn: "Settings & System" },
           { label: "الإعدادات العامة", labelEn: "System Preferences", active: true }
         ]}
+        language={language}
+      />
+
+      {/* Global Action Bar */}
+      <GlobalActionBar
+        onSave={() => {
+          setCompanySettings(prev => ({
+            ...prev,
+            nameAr,
+            taxNumber,
+            address,
+            taxConfiguration: {
+              ...prev.taxConfiguration,
+              vatRate: (vatRate || 15) / 100
+            }
+          }));
+          addToast({
+            type: "success",
+            message: "تم حفظ الإعدادات وتحديث بيانات الشركة والفواتير بنجاح.",
+            messageEn: "Company settings updated successfully."
+          });
+        }}
+        saveLabelAr="حفظ الإعدادات"
+        saveLabelEn="Save Settings"
+        onExport={createBackup}
+        extraActions={[
+          {
+            id: "act-backup",
+            labelAr: "نسخة احتياطية (JSON)",
+            labelEn: "Backup Database",
+            icon: Database,
+            variant: "secondary",
+            onClick: createBackup
+          }
+        ]}
+        pageId="settings"
         language={language}
       />
 

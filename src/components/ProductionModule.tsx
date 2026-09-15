@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import ERPTable, { ColumnDef } from "./common/ERPTable";
 import PageHeader from "./common/PageHeader";
+import GlobalActionBar from "./common/GlobalActionBar";
 
 interface ProductionModuleProps {
   language?: "ar" | "en";
@@ -291,6 +292,18 @@ export default function ProductionModule({ language = "ar" }: ProductionModulePr
             active: true 
           }
         ]}
+        language={language}
+      />
+
+      {/* Global Action Bar */}
+      <GlobalActionBar
+        onNew={() => {
+          if (activeSubTab === "recipes") setShowAddRecipe(true);
+        }}
+        newLabelAr={activeSubTab === "recipes" ? "إضافة تركيبة خلطة جديدة" : undefined}
+        newLabelEn={activeSubTab === "recipes" ? "New Recipe Formula" : undefined}
+        totalCount={recipes.length}
+        pageId="production"
         language={language}
       />
 

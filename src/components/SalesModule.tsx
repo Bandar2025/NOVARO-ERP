@@ -4,6 +4,7 @@ import { SalesInvoiceItem } from "../types";
 import { Plus, Check, FileText, ShoppingBag, Trash2, Printer, Percent, ShieldCheck, ShoppingCart, Eye, X } from "lucide-react";
 import ERPTable, { ColumnDef } from "./common/ERPTable";
 import PageHeader from "./common/PageHeader";
+import GlobalActionBar from "./common/GlobalActionBar";
 import FormSection from "./common/FormSection";
 import FormField from "./common/FormField";
 import EmptyState from "./common/EmptyState";
@@ -178,12 +179,16 @@ export default function SalesModule({ language = "ar" }: SalesModuleProps) {
           { label: "المبيعات والعملاء", labelEn: "Sales & CRM" },
           { label: "فواتير المبيعات", labelEn: "Sales Invoices", active: true }
         ]}
-        primaryAction={{
-          label: "إنشاء فاتورة جديدة",
-          labelEn: "New Sales Invoice",
-          onClick: () => setShowNewInvoice(true),
-          icon: Plus
-        }}
+        language={language}
+      />
+
+      {/* Global Action Bar */}
+      <GlobalActionBar
+        onNew={() => setShowNewInvoice(true)}
+        newLabelAr="إنشاء فاتورة جديدة"
+        newLabelEn="New Sales Invoice"
+        pageId="sales"
+        totalCount={salesInvoices.length}
         language={language}
       />
 

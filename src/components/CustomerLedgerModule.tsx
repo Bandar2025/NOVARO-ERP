@@ -3,6 +3,7 @@ import { useAppState } from "../context/StateContext";
 import { Users, FileText, Landmark, ShieldAlert, ArrowDownCircle, ArrowUpCircle, Printer, Plus, Trash2, Edit3, X, Search, DollarSign, Receipt } from "lucide-react";
 import ERPTable, { ColumnDef } from "./common/ERPTable";
 import PageHeader from "./common/PageHeader";
+import GlobalActionBar from "./common/GlobalActionBar";
 import ConfirmDialog from "./common/ConfirmDialog";
 import FormSection from "./common/FormSection";
 import FormField from "./common/FormField";
@@ -258,23 +259,29 @@ export default function CustomerLedgerModule({ language = "ar" }: CustomerLedger
           { label: "المبيعات والعملاء", labelEn: "Sales & CRM" },
           { label: "سجل حسابات العملاء", labelEn: "Customer Subledger", active: true }
         ]}
-        primaryAction={{
-          label: "تسجيل سند تحصيل",
-          labelEn: "Record Collection",
-          onClick: () => setShowCollectForm(true),
-          icon: DollarSign
-        }}
-        secondaryActions={[
+        language={language}
+      />
+
+      {/* Global Action Bar */}
+      <GlobalActionBar
+        onNew={() => setShowCollectForm(true)}
+        newLabelAr="تسجيل سند تحصيل"
+        newLabelEn="Record Collection"
+        extraActions={[
           {
-            label: "إضافة عميل جديد",
+            id: "act-new-cust",
+            labelAr: "إضافة عميل جديد",
             labelEn: "New Customer",
+            icon: Plus,
+            variant: "secondary",
             onClick: () => {
               handleCloseForm();
               setShowForm(true);
-            },
-            icon: Plus
+            }
           }
         ]}
+        pageId="customers"
+        totalCount={customers.length}
         language={language}
       />
 

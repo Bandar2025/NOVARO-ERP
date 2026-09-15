@@ -1,8 +1,9 @@
 import React from "react";
 import { useAppState } from "../context/StateContext";
 import { 
-  DollarSign, Package, TrendingUp, ShieldAlert, Users, Flame, Layers2, Coffee, AlertTriangle, Truck, Clock, ShoppingBag
+  DollarSign, Package, TrendingUp, ShieldAlert, Users, Flame, Layers2, Coffee, AlertTriangle, Truck, Clock, ShoppingBag, RefreshCw
 } from "lucide-react";
+import GlobalActionBar from "./common/GlobalActionBar";
 
 interface DashboardOverviewProps {
   language?: "ar" | "en";
@@ -11,7 +12,7 @@ interface DashboardOverviewProps {
 export default function DashboardOverview({ language = "ar" }: DashboardOverviewProps) {
   const isAr = language === "ar";
   const { 
-    items, customers, salesInvoices, purchaseOrders, roastingJobs, grindingJobs, cashboxTransactions 
+    items, customers, salesInvoices, purchaseOrders, roastingJobs, grindingJobs, cashboxTransactions, addToast 
   } = useAppState();
 
   // 1. Calculate Live cashbox balance
@@ -72,6 +73,20 @@ export default function DashboardOverview({ language = "ar" }: DashboardOverview
           </div>
         </div>
       </div>
+
+      {/* Global Action Bar */}
+      <GlobalActionBar
+        onRefresh={() => {
+          addToast({
+            type: "info",
+            message: "تم تحديث مؤشرات لوحة التحكم والتشغيل الفورية",
+            messageEn: "Dashboard metrics refreshed successfully"
+          });
+        }}
+        onPrint={() => window.print()}
+        pageId="dashboard"
+        language={language}
+      />
 
       {/* Primary KPI Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">

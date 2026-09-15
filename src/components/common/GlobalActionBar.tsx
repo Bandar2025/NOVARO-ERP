@@ -4,6 +4,7 @@ import {
   Trash2, Printer, Download, ArrowRight, ArrowLeft, MoreVertical, 
   CheckCircle2, RotateCcw, Filter
 } from "lucide-react";
+import { useAppState } from "../../context/StateContext";
 
 export interface ActionItem {
   id: string;
@@ -14,6 +15,7 @@ export interface ActionItem {
   variant?: "primary" | "secondary" | "danger" | "success" | "ghost";
   disabled?: boolean;
   permissionRequired?: boolean;
+  requiredAction?: string; // e.g. 'create', 'edit', 'delete', 'post'
 }
 
 interface GlobalActionBarProps {
@@ -26,6 +28,9 @@ interface GlobalActionBarProps {
   filterComponent?: React.ReactNode;
   onResetFilters?: () => void;
   isFiltered?: boolean;
+
+  // Permission page context
+  pageId?: string;
 
   // Primary & Secondary Actions
   onBack?: () => void;
@@ -73,6 +78,7 @@ export default function GlobalActionBar({
   filterComponent,
   onResetFilters,
   isFiltered = false,
+  pageId,
 
   onBack,
   backLabelAr = "رجوع",
@@ -113,6 +119,24 @@ export default function GlobalActionBar({
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const menuRef = React.useRef<HTMLDivElement>(null);
 
+  // Connect to actual StateContext permissions system
+  const { currentUser, checkUserPermission } = useAppState();
+
+  const isActionPermitted = (act: ActionItem): boolean => {
+    if (!act.permissionRequired) return true;
+    if (currentUser.role === "Admin" || currentUser.role === "Owner") return true;
+    if (pageId && act.requiredAction) {
+      return checkUserPermission(pageId, act.requiredAction);
+    }
+    // Default: If permissionRequired is set and user is Viewer/Auditor with non-view action, deny
+    if (currentUser.role === "Viewer" || currentUser.role === "Auditor") {
+      return false;
+    }
+    return true;
+  };
+
+  const permittedExtraActions = extraActions.filter(isActionPermitted);
+
   const BackIcon = isAr ? ArrowRight : ArrowLeft;
 
   // Close More Menu on outside click or ESC key
@@ -137,7 +161,7 @@ export default function GlobalActionBar({
     };
   }, [moreMenuOpen]);
 
-  const hasSecondaryActions = Boolean(onRefresh || onPrint || onExport || extraActions.length > 0);
+  const hasSecondaryActions = Boolean(onRefresh || onPrint || onExport || permittedExtraActions.length > 0);
 
   return (
     <div
@@ -295,7 +319,7 @@ export default function GlobalActionBar({
                       <span>{isAr ? "تصدير السجلات" : "Export Records"}</span>
                     </button>
                   )}
-                  {extraActions.map((act) => {
+                  {permittedExtraActions.map((act) => {
                     const ActIcon = act.icon;
                     return (
                       <button
@@ -364,7 +388,7 @@ export default function GlobalActionBar({
           )}
 
           {/* Extra Actions */}
-          {extraActions.map((act) => {
+          {permittedExtraActions.map((act) => {
             const ActIcon = act.icon;
             const getVariantClass = () => {
               switch (act.variant) {

@@ -3,6 +3,7 @@ import { useAppState } from "../context/StateContext";
 import { Flame, Plus, Trash2, ShieldAlert, CheckCircle, Coffee, TrendingUp, DollarSign, Calendar, Sliders } from "lucide-react";
 import ERPTable, { ColumnDef } from "./common/ERPTable";
 import PageHeader from "./common/PageHeader";
+import GlobalActionBar from "./common/GlobalActionBar";
 import ConfirmDialog from "./common/ConfirmDialog";
 
 interface RoasteryModuleProps {
@@ -200,6 +201,18 @@ export default function RoasteryModule({ language = "ar" }: RoasteryModuleProps)
             active: true 
           }
         ]}
+        language={language}
+      />
+
+      {/* Global Action Bar */}
+      <GlobalActionBar
+        onNew={() => {
+          if (activeTab !== "production") setActiveTab("production");
+        }}
+        newLabelAr="تسجيل وجبة تحميص"
+        newLabelEn="New Roasting Batch"
+        totalCount={roastingJobs.length}
+        pageId="roastery"
         language={language}
       />
 
