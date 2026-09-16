@@ -120,6 +120,27 @@ export class SalesApplicationService {
           for (const je of result.data.journalEntries) {
             await uow.journalEntries.save(je, context);
           }
+          for (const item of newInvoice.items) {
+            const dbItem = await uow.inventory.getItemById(item.itemId, context);
+            if (dbItem) {
+              dbItem.currentStock = Number(((dbItem.currentStock || 0) - item.quantity).toFixed(4));
+              await uow.inventory.saveItem(dbItem, context);
+            }
+          }
+          if (newInvoice.customerId && dto.paymentMethod !== "Cash") {
+            const customer = await uow.customers.findById(newInvoice.customerId, context);
+            if (customer) {
+              customer.balance = Number(((customer.balance || 0) + newInvoice.totalAmount).toFixed(4));
+              await uow.customers.save(customer, context);
+            }
+          }
+          if (dto.paymentMethod === "Cash") {
+            const cashAcc = await uow.accounts.findById("acc-1000", context);
+            if (cashAcc) {
+              cashAcc.balance = Number(((cashAcc.balance || 0) + newInvoice.totalAmount).toFixed(4));
+              await uow.accounts.save(cashAcc, context);
+            }
+          }
           return result.data.invoice;
         } else {
           await uow.sales.save(newInvoice, context);

@@ -708,4 +708,31 @@ CREATE INDEX IF NOT EXISTS "idx_role_permissions_perm" ON "role_permissions" USI
 CREATE INDEX IF NOT EXISTS "idx_user_roles_user" ON "user_roles" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "idx_user_company_user" ON "user_company_access" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "idx_refresh_tokens_user" ON "refresh_tokens" USING btree ("user_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "idx_refresh_tokens_hash" ON "refresh_tokens" USING btree ("token_hash");
+CREATE INDEX IF NOT EXISTS "idx_refresh_tokens_hash" ON "refresh_tokens" USING btree ("token_hash");--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "sync_queue" (
+	"id" text PRIMARY KEY NOT NULL,
+	"tenant_id" text NOT NULL,
+	"company_id" text NOT NULL,
+	"branch_id" text,
+	"idempotency_key" text NOT NULL,
+	"entity_type" text NOT NULL,
+	"operation" text NOT NULL,
+	"payload" jsonb NOT NULL,
+	"status" text DEFAULT 'PENDING' NOT NULL,
+	"retry_count" integer DEFAULT 0 NOT NULL,
+	"last_error" text,
+	"processed_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "sync_queue_idempotency_unique" UNIQUE("tenant_id","idempotency_key"),
+	CONSTRAINT "chk_sync_queue_status" CHECK (status IN ('PENDING', 'PROCESSING', 'SYNCED', 'FAILED', 'CONFLICT')),
+	CONSTRAINT "chk_sync_queue_operation" CHECK (operation IN ('CREATE', 'UPDATE', 'DELETE')),
+	CONSTRAINT "chk_sync_queue_retry_nonneg" CHECK (retry_count >= 0),
+	CONSTRAINT "chk_sync_queue_idempotency_nonempty" CHECK (length(trim(idempotency_key)) > 0)
+);--> statement-breakpoint
+ALTER TABLE "sync_queue" ADD CONSTRAINT "sync_queue_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "sync_queue" ADD CONSTRAINT "fk_sync_queue_company" FOREIGN KEY ("tenant_id","company_id") REFERENCES "companies"("tenant_id","id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "sync_queue" ADD CONSTRAINT "fk_sync_queue_branch" FOREIGN KEY ("tenant_id","company_id","branch_id") REFERENCES "branches"("tenant_id","company_id","id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_sync_queue_tenant" ON "sync_queue" USING btree ("tenant_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_sync_queue_status" ON "sync_queue" USING btree ("tenant_id","status");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_sync_queue_created" ON "sync_queue" USING btree ("created_at");
+

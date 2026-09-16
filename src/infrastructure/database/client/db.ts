@@ -82,6 +82,10 @@ if (dbConfig.provider === "postgres") {
   poolInstance = {
     async query(text: string, params?: any[]) {
       await ensureInitialized();
+      if ((!params || params.length === 0) && (text.includes(";") || text.trim().startsWith("--"))) {
+        await pgliteInstance!.exec(text);
+        return { rows: [], rowCount: 0, fields: [] };
+      }
       const res = await pgliteInstance!.query(text, params);
       return {
         rows: res.rows,
@@ -93,6 +97,10 @@ if (dbConfig.provider === "postgres") {
       await ensureInitialized();
       return {
         async query(text: string, params?: any[]) {
+          if ((!params || params.length === 0) && (text.includes(";") || text.trim().startsWith("--"))) {
+            await pgliteInstance!.exec(text);
+            return { rows: [], rowCount: 0, fields: [] };
+          }
           const res = await pgliteInstance!.query(text, params);
           return {
             rows: res.rows,

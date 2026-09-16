@@ -24,7 +24,7 @@ async function runProviderContractTests() {
       if (v !== undefined) {
         env[k] = v;
       } else {
-        delete env[k];
+        env[k] = "";
       }
     }
 

@@ -155,6 +155,20 @@ export class PurchaseApplicationService {
           for (const je of result.data.journalEntries) {
             await uow.journalEntries.save(je, context);
           }
+          for (const item of po.items) {
+            const dbItem = await uow.inventory.getItemById(item.itemId, context);
+            if (dbItem) {
+              dbItem.currentStock = Number(((dbItem.currentStock || 0) + item.quantity).toFixed(4));
+              await uow.inventory.saveItem(dbItem, context);
+            }
+          }
+          if (po.supplierId) {
+            const supplier = await uow.suppliers.findById(po.supplierId, context);
+            if (supplier) {
+              supplier.balance = Number(((supplier.balance || 0) + po.totalAmount).toFixed(4));
+              await uow.suppliers.save(supplier, context);
+            }
+          }
           return result.data.purchaseOrder;
         }
 

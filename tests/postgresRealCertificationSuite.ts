@@ -30,6 +30,7 @@ async function runPostgresRealCertification() {
     execSync("npx tsx tests/rateLimiterTest.ts", { stdio: "inherit", env: process.env });
     execSync("npx tsx tests/loginConcurrencyTest.ts", { stdio: "inherit", env: process.env });
     execSync("npx tsx tests/refreshTokenConcurrencyTest.ts", { stdio: "inherit", env: process.env });
+    execSync("npx tsx tests/phase2gEndToEndSuite.ts", { stdio: "inherit", env: process.env });
 
     console.log("\n==========================================================================");
     console.log("   🎉 POSTGRESQL REAL CERTIFICATION: ALL SUITES PASSED (100%)");
