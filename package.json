@@ -10,6 +10,7 @@
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
     "db:migrate": "tsx src/infrastructure/database/client/migrate.ts",
+    "db:probe": "tsx src/infrastructure/database/client/probe.ts",
     "test": "npm run test:pglite && npm run test:postgres",
     "test:pglite": "tsx tests/pgliteCertificationSuite.ts",
     "test:postgres": "tsx tests/postgresRealCertificationSuite.ts",

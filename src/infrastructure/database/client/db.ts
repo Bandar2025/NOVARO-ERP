@@ -5,6 +5,7 @@ import pg from "pg";
 import dotenv from "dotenv";
 import * as schema from "../schema";
 import { INIT_SCHEMA_SQL } from "./initSchema";
+import { getSanitizedConnectionMeta, sanitizeErrorMessage } from "./urlSanitizer";
 
 export type DatabaseProvider = "pglite" | "postgres";
 
@@ -52,7 +53,9 @@ export const dbConfig = resolveDatabaseConfig();
 
 console.log("==================================================");
 if (dbConfig.provider === "postgres") {
+  const meta = getSanitizedConnectionMeta(dbConfig.url);
   console.log("DATABASE PROVIDER: POSTGRESQL (Node-Postgres)");
+  console.log(`TARGET HOST: ${meta.host}:${meta.port} | DB: ${meta.database} | SSL: ${meta.ssl}`);
   console.log(`ENVIRONMENT: ${process.env.NODE_ENV || "development"}`);
 } else {
   console.log("DATABASE PROVIDER: PGLITE (Development/Test Mode)");
@@ -73,6 +76,9 @@ if (dbConfig.provider === "postgres") {
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 5000,
     ssl: dbConfig.ssl ? { rejectUnauthorized: false } : undefined,
+  });
+  poolInstance.on("error", (err: Error) => {
+    console.error("Unexpected error on idle PostgreSQL client:", sanitizeErrorMessage(err.message));
   });
   dbInstance = drizzleNodePg(poolInstance, { schema });
 } else {

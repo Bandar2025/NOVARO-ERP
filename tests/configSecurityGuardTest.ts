@@ -67,6 +67,53 @@ async function runConfigSecurityGuardTest() {
     "db.ts does not throw explicit fail fast error when DATABASE_PROVIDER is missing."
   );
 
+  // 4. Check migrate.ts for explicit pglite rejection
+  const migrateTsPath = path.join(process.cwd(), "src/infrastructure/database/client/migrate.ts");
+  const migrateTsContent = fs.readFileSync(migrateTsPath, "utf8");
+
+  assertCheck(
+    "migrate.ts: Explicit rejection of non-postgres providers",
+    migrateTsContent.includes("FAIL FAST MIGRATION ERROR: Migration runner strictly rejects provider"),
+    "migrate.ts does not strictly reject non-postgres providers."
+  );
+
+  // 5. Check URL sanitizer functionality
+  const { getSanitizedConnectionMeta, sanitizeErrorMessage } = await import(
+    "../src/infrastructure/database/client/urlSanitizer"
+  );
+
+  const sampleUrl = "postgresql://myuser:supersecretpass@db.example.com:5432/novaro_erp?sslmode=require";
+  const meta = getSanitizedConnectionMeta(sampleUrl);
+
+  assertCheck(
+    "urlSanitizer: Extracts host, port, db without exposing credentials",
+    meta.host === "db.example.com" &&
+      meta.port === "5432" &&
+      meta.database === "novaro_erp" &&
+      meta.ssl === true &&
+      !JSON.stringify(meta).includes("supersecretpass") &&
+      !JSON.stringify(meta).includes("myuser"),
+    "urlSanitizer failed to parse metadata or leaked credentials."
+  );
+
+  const rawErrMsg = "Connection failed to postgresql://myuser:supersecretpass@db.example.com:5432/novaro_erp";
+  const sanitizedErrMsg = sanitizeErrorMessage(rawErrMsg);
+
+  assertCheck(
+    "urlSanitizer: Redacts credentials from error messages",
+    !sanitizedErrMsg.includes("supersecretpass") &&
+      sanitizedErrMsg.includes("[REDACTED_SECRET]") &&
+      sanitizedErrMsg.includes("db.example.com"),
+    "urlSanitizer failed to redact credentials from error message string."
+  );
+
+  assertCheck(
+    "db.ts: Safe logging uses sanitized host/port without raw password",
+    dbTsContent.includes("TARGET HOST: ${meta.host}:${meta.port}") &&
+      !dbTsContent.includes("console.log(dbConfig.url)"),
+    "db.ts does not use sanitized connection metadata for logging."
+  );
+
   console.log("==========================================================================");
   console.log(`   CONFIG & SECURITY GUARD SUMMARY: ${passed} PASSED, ${failed} FAILED`);
   console.log("==========================================================================");
