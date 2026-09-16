@@ -17,20 +17,38 @@ async function runPostgresRealCertification() {
     process.exit(0);
   }
 
-  console.log("PostgreSQL server URL detected. Executing real PostgreSQL tests...\n");
+  console.log("PostgreSQL server URL detected. Verifying real connection...");
+  const pg = await import("pg");
+  const client = new pg.default.Client({ connectionString: dbUrl, connectionTimeoutMillis: 5000 });
+  try {
+    await client.connect();
+    const versionRes = await client.query("SELECT version() AS version;");
+    console.log("✅ PostgreSQL Connection Verified:", versionRes.rows[0]?.version);
+    await client.end();
+  } catch (connErr: any) {
+    console.error("❌ PostgreSQL Connection Failed (Server unreachable or invalid credentials):", connErr.message);
+    process.exit(1);
+  }
+
+  const tsxBin = "./node_modules/.bin/tsx";
+
+  console.log("\nExecuting migrations on real PostgreSQL instance...\n");
+  execSync(`${tsxBin} src/infrastructure/database/client/migrate.ts`, { stdio: "inherit", env: process.env });
+
+  console.log("\nExecuting real PostgreSQL test suites...\n");
 
   try {
-    execSync("npx tsx tests/providerContractTest.ts", { stdio: "inherit", env: process.env });
-    execSync("npx tsx tests/configSecurityGuardTest.ts", { stdio: "inherit", env: process.env });
-    execSync("npx tsx tests/phase2dR1SecuritySuite.ts", { stdio: "inherit", env: process.env });
-    execSync("npx tsx tests/certificationSuite.ts", { stdio: "inherit", env: process.env });
-    execSync("npx tsx tests/phase2cUnitOfWorkSuite.ts", { stdio: "inherit", env: process.env });
-    execSync("npx tsx tests/schemaParityTest.ts", { stdio: "inherit", env: process.env });
-    execSync("npx tsx tests/syncQueueNegativeTest.ts", { stdio: "inherit", env: process.env });
-    execSync("npx tsx tests/rateLimiterTest.ts", { stdio: "inherit", env: process.env });
-    execSync("npx tsx tests/loginConcurrencyTest.ts", { stdio: "inherit", env: process.env });
-    execSync("npx tsx tests/refreshTokenConcurrencyTest.ts", { stdio: "inherit", env: process.env });
-    execSync("npx tsx tests/phase2gEndToEndSuite.ts", { stdio: "inherit", env: process.env });
+    execSync(`${tsxBin} tests/providerContractTest.ts`, { stdio: "inherit", env: process.env });
+    execSync(`${tsxBin} tests/configSecurityGuardTest.ts`, { stdio: "inherit", env: process.env });
+    execSync(`${tsxBin} tests/phase2dR1SecuritySuite.ts`, { stdio: "inherit", env: process.env });
+    execSync(`${tsxBin} tests/certificationSuite.ts`, { stdio: "inherit", env: process.env });
+    execSync(`${tsxBin} tests/phase2cUnitOfWorkSuite.ts`, { stdio: "inherit", env: process.env });
+    execSync(`${tsxBin} tests/schemaParityTest.ts`, { stdio: "inherit", env: process.env });
+    execSync(`${tsxBin} tests/syncQueueNegativeTest.ts`, { stdio: "inherit", env: process.env });
+    execSync(`${tsxBin} tests/rateLimiterTest.ts`, { stdio: "inherit", env: process.env });
+    execSync(`${tsxBin} tests/loginConcurrencyTest.ts`, { stdio: "inherit", env: process.env });
+    execSync(`${tsxBin} tests/refreshTokenConcurrencyTest.ts`, { stdio: "inherit", env: process.env });
+    execSync(`${tsxBin} tests/phase2gEndToEndSuite.ts`, { stdio: "inherit", env: process.env });
 
     console.log("\n==========================================================================");
     console.log("   🎉 POSTGRESQL REAL CERTIFICATION: ALL SUITES PASSED (100%)");

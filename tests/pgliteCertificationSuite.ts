@@ -10,18 +10,19 @@ async function runPgliteCertification() {
   console.log("==========================================================================");
   console.log("Starting PGlite Development Suite execution...\n");
 
+  const tsxBin = "./node_modules/.bin/tsx";
   try {
-    execSync("npx tsx tests/providerContractTest.ts", { stdio: "inherit", env: process.env });
-    execSync("npx tsx tests/configSecurityGuardTest.ts", { stdio: "inherit", env: process.env });
-    execSync("npx tsx tests/phase2dR1SecuritySuite.ts", { stdio: "inherit", env: process.env });
-    execSync("npx tsx tests/certificationSuite.ts", { stdio: "inherit", env: process.env });
-    execSync("npx tsx tests/phase2cUnitOfWorkSuite.ts", { stdio: "inherit", env: process.env });
-    execSync("npx tsx tests/schemaParityTest.ts", { stdio: "inherit", env: process.env });
-    execSync("npx tsx tests/syncQueueNegativeTest.ts", { stdio: "inherit", env: process.env });
-    execSync("npx tsx tests/rateLimiterTest.ts", { stdio: "inherit", env: process.env });
-    execSync("npx tsx tests/loginConcurrencyTest.ts", { stdio: "inherit", env: process.env });
-    execSync("npx tsx tests/refreshTokenConcurrencyTest.ts", { stdio: "inherit", env: process.env });
-    execSync("npx tsx tests/phase2gEndToEndSuite.ts", { stdio: "inherit", env: process.env });
+    execSync(`${tsxBin} tests/providerContractTest.ts`, { stdio: "inherit", env: process.env });
+    execSync(`${tsxBin} tests/configSecurityGuardTest.ts`, { stdio: "inherit", env: process.env });
+    execSync(`${tsxBin} tests/phase2dR1SecuritySuite.ts`, { stdio: "inherit", env: process.env });
+    execSync(`${tsxBin} tests/certificationSuite.ts`, { stdio: "inherit", env: process.env });
+    execSync(`${tsxBin} tests/phase2cUnitOfWorkSuite.ts`, { stdio: "inherit", env: process.env });
+    execSync(`${tsxBin} tests/schemaParityTest.ts`, { stdio: "inherit", env: process.env });
+    execSync(`${tsxBin} tests/syncQueueNegativeTest.ts`, { stdio: "inherit", env: process.env });
+    execSync(`${tsxBin} tests/rateLimiterTest.ts`, { stdio: "inherit", env: process.env });
+    execSync(`${tsxBin} tests/loginConcurrencyTest.ts`, { stdio: "inherit", env: process.env });
+    execSync(`${tsxBin} tests/refreshTokenConcurrencyTest.ts`, { stdio: "inherit", env: process.env });
+    execSync(`${tsxBin} tests/phase2gEndToEndSuite.ts`, { stdio: "inherit", env: process.env });
 
     console.log("\n==========================================================================");
     console.log("   🎉 PGLITE DEVELOPMENT CERTIFICATION: ALL SUITES PASSED (100%)");

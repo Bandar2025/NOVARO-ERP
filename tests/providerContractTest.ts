@@ -1,4 +1,5 @@
 import { execSync } from "child_process";
+import fs from "fs";
 
 async function runProviderContractTests() {
   console.log("==========================================================================");
@@ -28,10 +29,11 @@ async function runProviderContractTests() {
       }
     }
 
-    const code = `import { dbConfig } from "./src/infrastructure/database/client/db"; console.log("RESOLVED_PROVIDER:" + dbConfig.provider);`;
+    const code = `import { dbConfig } from "./src/infrastructure/database/client/db"; console.log("RESOLVED_PROVIDER:" + dbConfig.provider); process.exit(0);`;
 
+    const tsxBin = fs.existsSync("./node_modules/.bin/tsx") ? "./node_modules/.bin/tsx" : "npx tsx";
     try {
-      const output = execSync(`npx tsx -e '${code}'`, {
+      const output = execSync(`${tsxBin} -e '${code}'`, {
         env,
         encoding: "utf8",
         stdio: ["pipe", "pipe", "pipe"],
