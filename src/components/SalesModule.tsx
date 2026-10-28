@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useAppState } from "../context/StateContext";
-import { SalesInvoiceItem } from "../types";
-import { Plus, Check, FileText, ShoppingBag, Trash2, Printer, Percent, ShieldCheck, ShoppingCart, Eye, X } from "lucide-react";
+import { SalesInvoiceItem, ZatcaDocumentRecord } from "../types";
+import { Plus, Check, FileText, ShoppingBag, Trash2, Printer, Percent, ShieldCheck, ShoppingCart, Eye, X, QrCode } from "lucide-react";
 import ERPTable, { ColumnDef } from "./common/ERPTable";
 import PageHeader from "./common/PageHeader";
 import GlobalActionBar from "./common/GlobalActionBar";
@@ -9,6 +9,7 @@ import FormSection from "./common/FormSection";
 import FormField from "./common/FormField";
 import EmptyState from "./common/EmptyState";
 import StatusBadge from "./common/StatusBadge";
+import ZatcaQRModal from "./common/ZatcaQRModal";
 
 interface SalesModuleProps {
   language?: "ar" | "en";
@@ -16,7 +17,7 @@ interface SalesModuleProps {
 
 export default function SalesModule({ language = "ar" }: SalesModuleProps) {
   const isAr = language === "ar";
-  const { customers, salesInvoices, items, addSalesInvoice, addToast } = useAppState();
+  const { customers, salesInvoices, items, addSalesInvoice, zatcaRecords, addToast } = useAppState();
 
   // Forms
   const [showNewInvoice, setShowNewInvoice] = useState(false);
@@ -27,8 +28,9 @@ export default function SalesModule({ language = "ar" }: SalesModuleProps) {
   const [paymentStatus, setPaymentStatus] = useState<"Paid" | "Unpaid">("Paid");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Selected Invoice for Print preview modal
+  // Selected Invoice for Print preview modal & ZATCA QR Modal
   const [selectedInvoice, setSelectedInvoice] = useState<any | null>(null);
+  const [selectedZatcaRecord, setSelectedZatcaRecord] = useState<ZatcaDocumentRecord | null>(null);
 
   // Filter for Wholesale/General Sales
   const wholesaleInvoices = salesInvoices.filter(si => si.type === "Wholesale");
@@ -66,19 +68,33 @@ export default function SalesModule({ language = "ar" }: SalesModuleProps) {
       header: "الإجراءات",
       headerEn: "Actions",
       sortable: false,
-      render: (_: any, row: any) => (
-        <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-          <button
-            type="button"
-            onClick={() => setSelectedInvoice(row)}
-            title={isAr ? "معاينة وطباعة الفاتورة" : "Preview & Print Invoice"}
-            className="p-1.5 rounded-lg text-slate-500 hover:text-teal-700 hover:bg-slate-100 transition-colors flex items-center gap-1 text-xs font-semibold"
-          >
-            <Eye className="w-3.5 h-3.5" />
-            <span>{isAr ? "معاينة" : "View"}</span>
-          </button>
-        </div>
-      )
+      render: (_: any, row: any) => {
+        const zatcaRec = zatcaRecords.find(r => r.documentId === row.id);
+        return (
+          <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => setSelectedInvoice(row)}
+              title={isAr ? "معاينة وطباعة الفاتورة" : "Preview & Print Invoice"}
+              className="p-1.5 rounded-lg text-slate-500 hover:text-teal-700 hover:bg-slate-100 transition-colors flex items-center gap-1 text-xs font-semibold"
+            >
+              <Eye className="w-3.5 h-3.5" />
+              <span>{isAr ? "معاينة" : "View"}</span>
+            </button>
+            {zatcaRec && (
+              <button
+                type="button"
+                onClick={() => setSelectedZatcaRecord(zatcaRec)}
+                title={isAr ? "ختم ZATCA QR & XML" : "ZATCA QR & XML"}
+                className="p-1.5 rounded-lg text-teal-700 bg-teal-50 hover:bg-teal-100 transition-colors flex items-center gap-1 text-xs font-bold"
+              >
+                <QrCode className="w-3.5 h-3.5" />
+                <span>ZATCA</span>
+              </button>
+            )}
+          </div>
+        );
+      }
     }
   ];
 
@@ -478,6 +494,14 @@ export default function SalesModule({ language = "ar" }: SalesModuleProps) {
             </div>
           </div>
         </div>
+      )}
+
+      {selectedZatcaRecord && (
+        <ZatcaQRModal
+          record={selectedZatcaRecord}
+          onClose={() => setSelectedZatcaRecord(null)}
+          language={language}
+        />
       )}
     </div>
   );

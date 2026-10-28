@@ -404,3 +404,182 @@ export interface CustomerMovement {
   notes: string;
 }
 
+export interface ZatcaDocumentRecord {
+  id: string;
+  documentId: string;
+  documentType: "SalesInvoice" | "POSReceipt" | "CreditNote" | "DebitNote";
+  invoiceTypeCode: "388" | "381" | "383";
+  subType: "0100000" | "0200000";
+  uuid: string;
+  icv: number;
+  previousInvoiceHash: string;
+  invoiceHash: string;
+  invoiceHashHex: string;
+  digitalSignature: string;
+  publicKeyStamp: string;
+  tlvBase64: string;
+  xmlContent: string;
+  sellerName: string;
+  vatNumber: string;
+  customerName: string;
+  issueTimestamp: string;
+  subtotal: number;
+  vatAmount: number;
+  totalAmount: number;
+  status: "CLEARED" | "REPORTED" | "GENERATED";
+}
+
+export interface SalesQuotation {
+  id: string;
+  customerId: string;
+  customerName: string;
+  date: string;
+  validUntil: string;
+  items: SalesInvoiceItem[];
+  subtotal: number;
+  taxAmount: number;
+  totalAmount: number;
+  status: "Draft" | "Sent" | "Accepted" | "Converted" | "Expired";
+  notes?: string;
+}
+
+export interface SalesOrder {
+  id: string;
+  quotationId?: string;
+  customerId: string;
+  customerName: string;
+  date: string;
+  deliveryDate: string;
+  items: SalesInvoiceItem[];
+  subtotal: number;
+  taxAmount: number;
+  totalAmount: number;
+  status: "Confirmed" | "Dispatched" | "Invoiced" | "Cancelled";
+  notes?: string;
+}
+
+export interface DeliveryNote {
+  id: string;
+  salesOrderId?: string;
+  invoiceId?: string;
+  customerId: string;
+  customerName: string;
+  date: string;
+  warehouseId: string;
+  driverName: string;
+  vehiclePlate: string;
+  items: { itemId: string; itemName: string; quantity: number }[];
+  status: "Dispatched" | "Delivered";
+}
+
+export interface SalesReturn {
+  id: string;
+  originalInvoiceId: string;
+  customerId: string;
+  customerName: string;
+  date: string;
+  reason: string;
+  refundMethod: "CreditAccount" | "Cash" | "Bank";
+  items: SalesInvoiceItem[];
+  subtotal: number;
+  taxAmount: number;
+  totalAmount: number;
+  status: "Posted";
+  zatcaUuid?: string;
+}
+
+export interface PurchaseRequest {
+  id: string;
+  requesterName: string;
+  department: string;
+  date: string;
+  neededBy: string;
+  items: { itemId: string; itemName: string; quantity: number; estimatedCost: number }[];
+  totalEstimated: number;
+  status: "Pending" | "Approved" | "ConvertedToPO" | "Rejected";
+  notes?: string;
+}
+
+export interface PurchaseReturn {
+  id: string;
+  originalPoId: string;
+  supplierId: string;
+  supplierName: string;
+  date: string;
+  reason: string;
+  items: PurchaseOrderItem[];
+  subtotal: number;
+  taxAmount: number;
+  totalAmount: number;
+  status: "Posted";
+}
+
+export interface FixedAsset {
+  id: string;
+  code: string;
+  name: string;
+  nameAr: string;
+  category: "Machinery" | "Vehicles" | "Buildings" | "IT_Equipment";
+  purchaseDate: string;
+  acquisitionCost: number;
+  salvageValue: number;
+  usefulLifeYears: number;
+  accumulatedDepreciation: number;
+  bookValue: number;
+  location: string;
+  status: "Active" | "FullyDepreciated" | "Disposed";
+}
+
+export interface Employee {
+  id: string;
+  code: string;
+  name: string;
+  nameAr: string;
+  roleTitle: string;
+  department: "Roastery" | "Grinding" | "Packaging" | "Sales" | "Accounting" | "Management";
+  basicSalary: number;
+  housingAllowance: number;
+  transportAllowance: number;
+  joinDate: string;
+  status: "Active" | "OnLeave";
+}
+
+export interface PayrollRun {
+  id: string;
+  periodMonth: string; // e.g., "2026-07"
+  runDate: string;
+  employeeCount: number;
+  totalBasic: number;
+  totalAllowances: number;
+  totalDeductions: number;
+  netPayable: number;
+  paymentMethod: "Bank" | "Cash";
+  journalEntryId: string;
+  status: "Posted";
+}
+
+export interface CrmLead {
+  id: string;
+  companyName: string;
+  contactPerson: string;
+  phone: string;
+  email: string;
+  stage: "New" | "Qualified" | "Proposal" | "Negotiation" | "Won";
+  expectedValue: number;
+  assignedTo: string;
+  nextFollowUp: string;
+  notes: string;
+}
+
+export interface CostCenter {
+  id: string;
+  code: string;
+  name: string;
+  nameAr: string;
+  manager: string;
+  budgetAllocated: number;
+  actualSpent: number;
+  department: string;
+  status: "Active" | "Closed";
+}
+

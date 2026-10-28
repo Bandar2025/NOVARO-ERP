@@ -2,7 +2,8 @@ import {
   Account, AccountType, Customer, Supplier, Warehouse, Item, ItemCategory, 
   Recipe, JournalEntry, Batch, RoastingJob, GrindingJob, PackagingJob, 
   PurchaseOrder, SalesInvoice, POSSession, BankTransaction, User, AuditLog, Backup,
-  JobStatus
+  JobStatus, SalesQuotation, SalesOrder, DeliveryNote, SalesReturn, PurchaseRequest,
+  PurchaseReturn, FixedAsset, Employee, PayrollRun, CrmLead, CostCenter
 } from "../types";
 
 // Chart of Accounts (Double Entry Standard)
@@ -12,6 +13,7 @@ export const initialAccounts: Account[] = [
   { id: "acc-1200", code: "1200", name: "Accounts Receivable", nameAr: "الذمم المدينة (العملاء)", type: AccountType.Asset, balance: 45000 },
   { id: "acc-1300", code: "1300", name: "Raw Material Stock", nameAr: "مخزون المواد الخام", type: AccountType.Asset, balance: 85000 },
   { id: "acc-1310", code: "1310", name: "Finished Product Stock", nameAr: "مخزون المنتجات النهائية", type: AccountType.Asset, balance: 62000 },
+  { id: "acc-1320", code: "1320", name: "Work in Progress (WIP)", nameAr: "مخزون تحت التشغيل (تحميص وطحن)", type: AccountType.Asset, balance: 0 },
   { id: "acc-1400", code: "1400", name: "Machinery & Equipment", nameAr: "الآلات والمعدات (المحامص)", type: AccountType.Asset, balance: 180000 },
   
   { id: "acc-2000", code: "2000", name: "Accounts Payable", nameAr: "الذمم الدائنة (الموردين)", type: AccountType.Liability, balance: 35000 },
@@ -142,7 +144,12 @@ export const initialJournalEntries: JournalEntry[] = [
 export const initialBatches: Batch[] = [
   { id: "bat-001", batchNumber: "B-ETH-260701", itemId: "item-1", itemName: "Ethiopian Yirgacheffe (Green)", manufactureDate: "2026-07-01", expiryDate: "2028-07-01", quantity: 800, supplierId: "sup-1", costPerUnit: 28, warehouseId: "wh-1" },
   { id: "bat-002", batchNumber: "B-BRZ-260702", itemId: "item-2", itemName: "Brazilian Santos (Green)", manufactureDate: "2026-07-02", expiryDate: "2028-07-02", quantity: 1500, supplierId: "sup-2", costPerUnit: 22, warehouseId: "wh-1" },
-  { id: "bat-003", batchNumber: "B-CRD-260703", itemId: "item-3", itemName: "Guatemalan Cardamom (Green)", manufactureDate: "2026-07-03", expiryDate: "2028-07-03", quantity: 200, supplierId: "sup-1", costPerUnit: 75, warehouseId: "wh-1" }
+  { id: "bat-003", batchNumber: "B-CRD-260703", itemId: "item-3", itemName: "Guatemalan Cardamom (Green)", manufactureDate: "2026-07-03", expiryDate: "2028-07-03", quantity: 200, supplierId: "sup-1", costPerUnit: 75, warehouseId: "wh-1" },
+  { id: "bat-004", batchNumber: "B-RST-ETH-01", itemId: "item-5", itemName: "Ethiopian Roasted Beans (Medium)", manufactureDate: "2026-07-06", expiryDate: "2027-07-06", quantity: 150, costPerUnit: 35, warehouseId: "wh-2" },
+  { id: "bat-005", batchNumber: "B-GRD-ETH-01", itemId: "item-7", itemName: "Ethiopian Ground Coffee", manufactureDate: "2026-07-07", expiryDate: "2027-07-07", quantity: 80, costPerUnit: 38, warehouseId: "wh-2" },
+  { id: "bat-006", batchNumber: "B-PKG-PCH-01", itemId: "item-9", itemName: "Premium Aluminium Pouch 250g", manufactureDate: "2026-07-01", expiryDate: "2030-07-01", quantity: 5000, costPerUnit: 0.8, warehouseId: "wh-1" },
+  { id: "bat-007", batchNumber: "B-FIN-CRD-01", itemId: "item-11", itemName: "Novaro Cardamom Coffee Pouch 250g", manufactureDate: "2026-07-08", expiryDate: "2027-07-08", quantity: 450, costPerUnit: 16.5, warehouseId: "wh-3" },
+  { id: "bat-008", batchNumber: "B-FIN-ESP-01", itemId: "item-12", itemName: "Novaro Espresso Roast Beans Bag 1kg", manufactureDate: "2026-07-08", expiryDate: "2027-07-08", quantity: 210, costPerUnit: 42.0, warehouseId: "wh-3" }
 ];
 
 // Roasting, Grinding, and Packaging jobs
@@ -237,6 +244,8 @@ export const initialSalesInvoices: SalesInvoice[] = [
       { itemId: "item-11", itemName: "Novaro Cardamom Coffee Pouch 250g", quantity: 150, price: 32, total: 4800 },
       { itemId: "item-12", itemName: "Novaro Espresso Roast Beans Bag 1kg", quantity: 30, price: 85, total: 2550 }
     ],
+    subtotal: 6391.30,
+    taxAmount: 958.70,
     totalAmount: 7350
   }
 ];
@@ -268,3 +277,265 @@ export const initialBackups: Backup[] = [
   { id: "bak-1", filename: "novaro_erp_prod_2026_07_01.sql.gz", createdAt: "2026-07-01 01:00:00", size: "4.8 MB" },
   { id: "bak-2", filename: "novaro_erp_prod_2026_07_08.sql.gz", createdAt: "2026-07-08 01:00:00", size: "5.1 MB" }
 ];
+
+// Extended Enterprise Lifecycle Seed Data
+export const initialSalesQuotations: SalesQuotation[] = [
+  {
+    id: "QT-2026-1001",
+    customerId: "cust-2",
+    customerName: "أسواق التميمي",
+    date: "2026-07-09",
+    validUntil: "2026-07-25",
+    items: [
+      { itemId: "item-11", itemName: "قهوة نوفارو بالهيل كيس 250 غرام", quantity: 200, price: 32, total: 6400 },
+      { itemId: "item-12", itemName: "بن نوفارو إسبريسو كيس 1 كغم", quantity: 50, price: 85, total: 4250 }
+    ],
+    subtotal: 10650,
+    taxAmount: 1597.5,
+    totalAmount: 12247.5,
+    status: "Sent",
+    notes: "عرض أسعار توريد الربع الثالث لفروع المنطقة الشرقية"
+  }
+];
+
+export const initialSalesOrders: SalesOrder[] = [
+  {
+    id: "SO-2026-2001",
+    quotationId: "QT-2026-1001",
+    customerId: "cust-1",
+    customerName: "أسواق العثيم المركزية",
+    date: "2026-07-09",
+    deliveryDate: "2026-07-12",
+    items: [
+      { itemId: "item-11", itemName: "قهوة نوفارو بالهيل كيس 250 غرام", quantity: 100, price: 32, total: 3200 }
+    ],
+    subtotal: 3200,
+    taxAmount: 480,
+    totalAmount: 3680,
+    status: "Confirmed",
+    notes: "توريد مستودع الرياض الرئيسي"
+  }
+];
+
+export const initialDeliveryNotes: DeliveryNote[] = [
+  {
+    id: "DN-2026-3001",
+    salesOrderId: "SO-2026-2001",
+    invoiceId: "SI-2026-0001",
+    customerId: "cust-1",
+    customerName: "أسواق العثيم المركزية",
+    date: "2026-07-08",
+    warehouseId: "wh-3",
+    driverName: "فهد الدوسري",
+    vehiclePlate: "أ ب ج 4821",
+    items: [
+      { itemId: "item-11", itemName: "قهوة نوفارو بالهيل كيس 250 غرام", quantity: 150 },
+      { itemId: "item-12", itemName: "بن نوفارو إسبريسو كيس 1 كغم", quantity: 30 }
+    ],
+    status: "Delivered"
+  }
+];
+
+export const initialSalesReturns: SalesReturn[] = [];
+
+export const initialPurchaseRequests: PurchaseRequest[] = [
+  {
+    id: "PR-2026-4001",
+    requesterName: "مصطفى - مدير الإنتاج",
+    department: "Roastery & Production",
+    date: "2026-07-09",
+    neededBy: "2026-07-18",
+    items: [
+      { itemId: "item-1", itemName: "بن إثيوبي ييرجاشيف (خام)", quantity: 500, estimatedCost: 28 },
+      { itemId: "item-9", itemName: "أكياس ألومنيوم فاخرة 250 غرام", quantity: 2000, estimatedCost: 0.8 }
+    ],
+    totalEstimated: 15600,
+    status: "Pending",
+    notes: "تعزيز مخزون البن الأخضر وأكياس التعبئة لخطة تحميص شهر أغسطس"
+  }
+];
+
+export const initialPurchaseReturns: PurchaseReturn[] = [];
+
+export const initialFixedAssets: FixedAsset[] = [
+  {
+    id: "fa-1",
+    code: "FA-RST-001",
+    name: "Probat P60 Industrial Coffee Roaster",
+    nameAr: "محمصة بروبات صناعية سعة 60 كجم",
+    category: "Machinery",
+    purchaseDate: "2025-01-15",
+    acquisitionCost: 120000,
+    salvageValue: 12000,
+    usefulLifeYears: 10,
+    accumulatedDepreciation: 16200,
+    bookValue: 103800,
+    location: "صالة التحميص والطحن - الدمام",
+    status: "Active"
+  },
+  {
+    id: "fa-2",
+    code: "FA-GRD-002",
+    name: "Mahlkönig Industrial Roller Grinder",
+    nameAr: "طاحونة صناعية ألمانية عالية الدقة",
+    category: "Machinery",
+    purchaseDate: "2025-03-01",
+    acquisitionCost: 42000,
+    salvageValue: 2000,
+    usefulLifeYears: 8,
+    accumulatedDepreciation: 6250,
+    bookValue: 35750,
+    location: "صالة التحميص والطحن - الدمام",
+    status: "Active"
+  },
+  {
+    id: "fa-3",
+    code: "FA-PKG-003",
+    name: "Nitrogen Flush Vertical Packaging Line",
+    nameAr: "خط تعبئة وتغليف بالنيتروجين آلي",
+    category: "Machinery",
+    purchaseDate: "2025-06-01",
+    acquisitionCost: 18000,
+    salvageValue: 1000,
+    usefulLifeYears: 5,
+    accumulatedDepreciation: 3400,
+    bookValue: 14600,
+    location: "قسم التغليف النهائي - الدمام",
+    status: "Active"
+  }
+];
+
+export const initialEmployees: Employee[] = [
+  {
+    id: "emp-1",
+    code: "EMP-1001",
+    name: "Mustafa Al-Harbi",
+    nameAr: "مصطفى الحربي",
+    roleTitle: "مدير التحميص والجودة",
+    department: "Roastery",
+    basicSalary: 9500,
+    housingAllowance: 2375,
+    transportAllowance: 950,
+    joinDate: "2024-02-01",
+    status: "Active"
+  },
+  {
+    id: "emp-2",
+    code: "EMP-1002",
+    name: "Sara Al-Qahtani",
+    nameAr: "سارة القحطاني",
+    roleTitle: "رئيسة الحسابات والضرائب",
+    department: "Accounting",
+    basicSalary: 11000,
+    housingAllowance: 2750,
+    transportAllowance: 1000,
+    joinDate: "2024-03-15",
+    status: "Active"
+  },
+  {
+    id: "emp-3",
+    code: "EMP-1003",
+    name: "Ali Al-Zahrani",
+    nameAr: "علي الزهراني",
+    roleTitle: "مشرف خطوط الطحن والتعبئة",
+    department: "Grinding",
+    basicSalary: 6800,
+    housingAllowance: 1700,
+    transportAllowance: 700,
+    joinDate: "2024-06-10",
+    status: "Active"
+  },
+  {
+    id: "emp-4",
+    code: "EMP-1004",
+    name: "Saleh Al-Otaibi",
+    nameAr: "صالح العتيبي",
+    roleTitle: "مسؤول مبيعات الجملة ونقاط البيع",
+    department: "Sales",
+    basicSalary: 7200,
+    housingAllowance: 1800,
+    transportAllowance: 800,
+    joinDate: "2025-01-01",
+    status: "Active"
+  }
+];
+
+export const initialPayrollRuns: PayrollRun[] = [
+  {
+    id: "PAY-2026-06",
+    periodMonth: "2026-06",
+    runDate: "2026-06-28",
+    employeeCount: 4,
+    totalBasic: 34500,
+    totalAllowances: 12075,
+    totalDeductions: 3450,
+    netPayable: 43125,
+    paymentMethod: "Bank",
+    journalEntryId: "JE-2026-0001",
+    status: "Posted"
+  }
+];
+
+export const initialCrmLeads: CrmLead[] = [
+  {
+    id: "lead-1",
+    companyName: "فنادق ومنتجعات الريتز - الرياض",
+    contactPerson: "أ. سلطان الشمري",
+    phone: "+966 55 892 1044",
+    email: "procurement@ritz-hospitality.sa",
+    stage: "Negotiation",
+    expectedValue: 85000,
+    assignedTo: "صالح العتيبي",
+    nextFollowUp: "2026-07-15",
+    notes: "توريد شهري 400 كجم إسبريسو مختص + 200 كجم قهوة سعودية بالهيل"
+  },
+  {
+    id: "lead-2",
+    companyName: "سلسلة مقاهي أرابيكا الخليج",
+    contactPerson: "م. نايف السبيعي",
+    phone: "+966 50 411 7890",
+    email: "supply@arabicagulf.sa",
+    stage: "Proposal",
+    expectedValue: 48000,
+    assignedTo: "صالح العتيبي",
+    nextFollowUp: "2026-07-18",
+    notes: "طلب عينات تحميص وسط إثيوبي ييرجاشيف"
+  }
+];
+
+export const initialCostCenters: CostCenter[] = [
+  {
+    id: "cc-100",
+    code: "CC-RST-100",
+    name: "Industrial Roastery & Kilns",
+    nameAr: "مركز تكلفة صالة التحميص والأفران",
+    manager: "مصطفى الحربي",
+    budgetAllocated: 250000,
+    actualSpent: 142650,
+    department: "Roastery",
+    status: "Active"
+  },
+  {
+    id: "cc-200",
+    code: "CC-GRD-200",
+    name: "Milling, Spice Blending & Packaging",
+    nameAr: "مركز تكلفة الطحن والخلط والتغليف",
+    manager: "علي الزهراني",
+    budgetAllocated: 150000,
+    actualSpent: 84200,
+    department: "Grinding & Packaging",
+    status: "Active"
+  },
+  {
+    id: "cc-300",
+    code: "CC-SLS-300",
+    name: "Wholesale Logistics & Retail Showrooms",
+    nameAr: "مركز تكلفة التوزيع ومعارض التجزئة",
+    manager: "صالح العتيبي",
+    budgetAllocated: 120000,
+    actualSpent: 61500,
+    department: "Sales & Distribution",
+    status: "Active"
+  }
+];
+

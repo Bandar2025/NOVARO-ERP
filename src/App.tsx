@@ -16,7 +16,14 @@ import PosModule from "./components/PosModule";
 import CashboxModule from "./components/CashboxModule";
 import ReportsModule from "./components/ReportsModule";
 import SettingsModule from "./components/SettingsModule";
-import PlaceholderModule from "./components/common/PlaceholderModule";
+import ZatcaComplianceModule from "./components/ZatcaComplianceModule";
+import SalesLifecycleModule from "./components/SalesLifecycleModule";
+import ProcurementLifecycleModule from "./components/ProcurementLifecycleModule";
+import TreasuryBanksModule from "./components/TreasuryBanksModule";
+import WarehouseOperationsModule from "./components/WarehouseOperationsModule";
+import FixedAssetsAgingModule from "./components/FixedAssetsAgingModule";
+import EnterpriseOperationsModule from "./components/EnterpriseOperationsModule";
+import AdminGovernanceModule from "./components/AdminGovernanceModule";
 
 import AppSidebar, { ActiveSection, DOMAIN_GROUPS } from "./components/common/AppSidebar";
 import AppHeader from "./components/common/AppHeader";
@@ -38,7 +45,7 @@ export default function App() {
 
   const renderActiveSection = () => {
     switch (activeSection) {
-      // Functional Modules
+      // Core Operational Modules
       case "overview":
         return <DashboardOverview language={language} />;
       case "accounting":
@@ -72,35 +79,77 @@ export default function App() {
       case "settings":
         return <SettingsModule language={language} />;
 
-      // Placeholder / Planned Modules
-      default: {
-        // Find metadata from DOMAIN_GROUPS
-        let titleAr = "وحدة قيد التخطيط";
-        let titleEn = "Planned Module";
-        let domainAr = "نظام نوفارو ERP";
-        let domainEn = "Novaro ERP";
+      // Treasury & Banking Suite
+      case "banks":
+      case "bank_transactions":
+      case "bank_reconciliation":
+        return <TreasuryBanksModule initialTab={activeSection} language={language} />;
 
-        for (const group of DOMAIN_GROUPS) {
-          const found = group.items.find(item => item.id === activeSection);
-          if (found) {
-            titleAr = found.titleAr;
-            titleEn = found.titleEn;
-            domainAr = group.titleAr;
-            domainEn = group.titleEn;
-            break;
-          }
-        }
+      // Sales Lifecycle Suite (Quotations -> Orders -> Delivery Notes -> Credit Notes -> Price Lists)
+      case "sales_quotations":
+      case "sales_orders":
+      case "delivery_notes":
+      case "sales_returns":
+      case "price_lists":
+        return <SalesLifecycleModule initialTab={activeSection} language={language} />;
 
-        return (
-          <PlaceholderModule
-            titleAr={titleAr}
-            titleEn={titleEn}
-            domainAr={domainAr}
-            domainEn={domainEn}
-            language={language}
-          />
-        );
-      }
+      // Procurement Lifecycle Suite (PR -> RFQ -> PO -> GRN -> Debit Notes)
+      case "purchase_requests":
+      case "rfq":
+      case "purchase_orders":
+      case "goods_receipt":
+      case "purchase_returns":
+        return <ProcurementLifecycleModule initialTab={activeSection} language={language} />;
+
+      // Warehouse & Inventory Valuation Suite
+      case "items":
+      case "warehouses":
+      case "stock_count":
+      case "stock_transfers":
+      case "stock_adjustments":
+      case "stock_valuation":
+        return <WarehouseOperationsModule initialTab={activeSection} language={language} />;
+
+      // Fixed Assets, Depreciation & Aging Suite
+      case "fixed_assets":
+      case "depreciation":
+      case "customer_aging":
+      case "supplier_aging":
+        return <FixedAssetsAgingModule initialTab={activeSection} language={language} />;
+
+      // ZATCA Phase 1 & Phase 2 E-Invoicing & VAT Suite
+      case "zatca":
+      case "e_invoicing":
+      case "vat_config":
+        return <ZatcaComplianceModule initialTab={activeSection} language={language} />;
+
+      // CRM, Projects/Cost Centers & HR/Payroll Suite
+      case "crm_leads":
+      case "crm_opportunities":
+      case "crm_activities":
+      case "projects":
+      case "cost_centers":
+      case "hr_employees":
+      case "hr_attendance":
+      case "hr_leave":
+      case "hr_payroll":
+        return <EnterpriseOperationsModule initialTab={activeSection} language={language} />;
+
+      // Enterprise Governance, Fiscal Periods Lock, RBAC, Audit & Database Sync Suite
+      case "admin_companies":
+      case "admin_branches":
+      case "admin_fiscal_years":
+      case "admin_fiscal_periods":
+      case "admin_users":
+      case "admin_roles":
+      case "admin_numbering":
+      case "admin_audit_log":
+      case "admin_backup":
+      case "admin_sync_status":
+        return <AdminGovernanceModule initialTab={activeSection} language={language} />;
+
+      default:
+        return <DashboardOverview language={language} />;
     }
   };
 

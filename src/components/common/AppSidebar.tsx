@@ -142,21 +142,21 @@ export const DOMAIN_GROUPS: DomainGroup[] = [
         titleAr: "الحسابات البنكية",
         titleEn: "Bank Accounts",
         icon: BankIcon,
-        isPlanned: true
+        badge: undefined
       },
       {
         id: "bank_transactions",
         titleAr: "الحركات البنكية",
         titleEn: "Bank Transactions",
         icon: CreditCard,
-        isPlanned: true
+        badge: undefined
       },
       {
         id: "bank_reconciliation",
         titleAr: "المطابقة البنكية",
         titleEn: "Bank Reconciliation",
         icon: FileCheck,
-        isPlanned: true
+        badge: undefined
       }
     ]
   },
@@ -189,35 +189,35 @@ export const DOMAIN_GROUPS: DomainGroup[] = [
         titleAr: "عروض الأسعار",
         titleEn: "Sales Quotations",
         icon: FileText,
-        isPlanned: true
+        badge: undefined
       },
       {
         id: "sales_orders",
         titleAr: "أوامر المبيعات",
         titleEn: "Sales Orders",
         icon: ReceiptText,
-        isPlanned: true
+        badge: undefined
       },
       {
         id: "delivery_notes",
         titleAr: "إذونات التسليم",
         titleEn: "Delivery Notes",
         icon: Truck,
-        isPlanned: true
+        badge: undefined
       },
       {
         id: "sales_returns",
         titleAr: "مرتجعات المبيعات",
         titleEn: "Sales Returns",
         icon: History,
-        isPlanned: true
+        badge: undefined
       },
       {
         id: "price_lists",
         titleAr: "قوائم الأسعار",
         titleEn: "Price Lists",
         icon: Tag,
-        isPlanned: true
+        badge: undefined
       }
     ]
   },
@@ -258,35 +258,35 @@ export const DOMAIN_GROUPS: DomainGroup[] = [
         titleAr: "طلبات الشراء",
         titleEn: "Purchase Requests",
         icon: FileText,
-        isPlanned: true
+        badge: undefined
       },
       {
         id: "rfq",
         titleAr: "عروض أسعار الموردين",
         titleEn: "RFQ (Quotations)",
         icon: FileSearch,
-        isPlanned: true
+        badge: undefined
       },
       {
         id: "purchase_orders",
         titleAr: "أوامر الشراء",
         titleEn: "Purchase Orders",
         icon: ReceiptText,
-        isPlanned: true
+        badge: undefined
       },
       {
         id: "goods_receipt",
         titleAr: "استلام البضائع",
         titleEn: "Goods Receipt Note",
         icon: Package,
-        isPlanned: true
+        badge: undefined
       },
       {
         id: "purchase_returns",
         titleAr: "مرتجعات المشتريات",
         titleEn: "Purchase Returns",
         icon: History,
-        isPlanned: true
+        badge: undefined
       }
     ]
   },
@@ -321,42 +321,42 @@ export const DOMAIN_GROUPS: DomainGroup[] = [
         titleAr: "دليل الأصناف",
         titleEn: "Items Master",
         icon: Boxes,
-        isPlanned: true
+        badge: undefined
       },
       {
         id: "warehouses",
         titleAr: "المستودعات والمواقع",
         titleEn: "Warehouses & Locations",
         icon: Warehouse,
-        isPlanned: true
+        badge: undefined
       },
       {
         id: "stock_count",
         titleAr: "جرد المخزون",
         titleEn: "Stock Count (Physical)",
         icon: Calculator,
-        isPlanned: true
+        badge: undefined
       },
       {
         id: "stock_transfers",
         titleAr: "تحويلات المستودعات",
         titleEn: "Stock Transfers",
         icon: Network,
-        isPlanned: true
+        badge: undefined
       },
       {
         id: "stock_adjustments",
         titleAr: "تسويات المخزون",
         titleEn: "Stock Adjustments",
         icon: Sliders,
-        isPlanned: true
+        badge: undefined
       },
       {
         id: "stock_valuation",
         titleAr: "تقييم المخزون",
         titleEn: "Stock Valuation",
         icon: FileBarChart,
-        isPlanned: true
+        badge: undefined
       }
     ]
   },
@@ -397,28 +397,28 @@ export const DOMAIN_GROUPS: DomainGroup[] = [
         titleAr: "دليل الأصول الثابتة",
         titleEn: "Fixed Assets Directory",
         icon: Building2,
-        isPlanned: true
+        badge: undefined
       },
       {
         id: "depreciation",
         titleAr: "حساب وإهلاك الأصول",
         titleEn: "Depreciation Schedules",
         icon: Calculator,
-        isPlanned: true
+        badge: undefined
       },
       {
         id: "customer_aging",
         titleAr: "أعمار ديون العملاء",
         titleEn: "Customer Aging Report",
         icon: FileBarChart,
-        isPlanned: true
+        badge: undefined
       },
       {
         id: "supplier_aging",
         titleAr: "أعمار ذمم الموردين",
         titleEn: "Supplier Aging Report",
         icon: FileBarChart,
-        isPlanned: true
+        badge: undefined
       }
     ]
   },
@@ -433,21 +433,21 @@ export const DOMAIN_GROUPS: DomainGroup[] = [
         titleAr: "إعدادات ضريبة القيمة المضافة",
         titleEn: "VAT Configuration",
         icon: Percent,
-        isPlanned: true
+        badge: undefined
       },
       {
         id: "e_invoicing",
         titleAr: "الفوترة الإلكترونية",
         titleEn: "E-Invoicing Fatoora",
         icon: QrCode,
-        isPlanned: true
+        badge: undefined
       },
       {
         id: "zatca",
         titleAr: "متطلبات هيئة الزكاة (ZATCA)",
         titleEn: "ZATCA Integration Phase 2",
         icon: ShieldCheck,
-        isPlanned: true
+        badge: undefined
       }
     ]
   },
@@ -462,21 +462,21 @@ export const DOMAIN_GROUPS: DomainGroup[] = [
         titleAr: "العملاء المحتملون (Leads)",
         titleEn: "Sales Leads",
         icon: Users,
-        isPlanned: true
+        badge: undefined
       },
       {
         id: "crm_opportunities",
         titleAr: "الفرص البيعية",
         titleEn: "Opportunities",
         icon: Sparkles,
-        isPlanned: true
+        badge: undefined
       },
       {
         id: "crm_activities",
         titleAr: "الأنشطة والمهام",
         titleEn: "Activities & Follow-ups",
         icon: Calendar,
-        isPlanned: true
+        badge: undefined
       }
     ]
   },
@@ -491,14 +491,14 @@ export const DOMAIN_GROUPS: DomainGroup[] = [
         titleAr: "إدارة المشاريع",
         titleEn: "Projects Portfolio",
         icon: FolderKanban,
-        isPlanned: true
+        badge: undefined
       },
       {
         id: "cost_centers",
         titleAr: "مراكز التكلفة المتقدمة",
         titleEn: "Advanced Cost Centers",
         icon: Kanban,
-        isPlanned: true
+        badge: undefined
       }
     ]
   },
@@ -513,28 +513,28 @@ export const DOMAIN_GROUPS: DomainGroup[] = [
         titleAr: "سجلات الموظفين",
         titleEn: "Employees Directory",
         icon: Users,
-        isPlanned: true
+        badge: undefined
       },
       {
         id: "hr_attendance",
         titleAr: "الحضور والانصراف",
         titleEn: "Attendance & Shifts",
         icon: Calendar,
-        isPlanned: true
+        badge: undefined
       },
       {
         id: "hr_leave",
         titleAr: "الإجازات والأذونات",
         titleEn: "Leave Management",
         icon: FileText,
-        isPlanned: true
+        badge: undefined
       },
       {
         id: "hr_payroll",
         titleAr: "مسير الرواتب",
         titleEn: "Payroll Processing",
         icon: Coins,
-        isPlanned: true
+        badge: undefined
       }
     ]
   },
@@ -555,70 +555,70 @@ export const DOMAIN_GROUPS: DomainGroup[] = [
         titleAr: "الشركات والكيانات",
         titleEn: "Companies Master",
         icon: Building2,
-        isPlanned: true
+        badge: undefined
       },
       {
         id: "admin_branches",
         titleAr: "الفروع والمستودعات",
         titleEn: "Branches Directory",
         icon: Warehouse,
-        isPlanned: true
+        badge: undefined
       },
       {
         id: "admin_fiscal_years",
         titleAr: "السنوات المالية",
         titleEn: "Fiscal Years",
         icon: Calendar,
-        isPlanned: true
+        badge: undefined
       },
       {
         id: "admin_fiscal_periods",
         titleAr: "الفترات المحاسبية (إغلاق)",
         titleEn: "Fiscal Periods (Lock)",
         icon: History,
-        isPlanned: true
+        badge: undefined
       },
       {
         id: "admin_users",
         titleAr: "مستخدمو النظام",
         titleEn: "System Users",
         icon: Users,
-        isPlanned: true
+        badge: undefined
       },
       {
         id: "admin_roles",
         titleAr: "الأدوار والصلاحيات",
         titleEn: "Roles & Permissions",
         icon: Key,
-        isPlanned: true
+        badge: undefined
       },
       {
         id: "admin_numbering",
         titleAr: "ترقيم المستندات والتسلسل",
         titleEn: "Document Sequences",
         icon: FileDigit,
-        isPlanned: true
+        badge: undefined
       },
       {
         id: "admin_audit_log",
         titleAr: "سجل التدقيق والمراقبة",
         titleEn: "Audit Trail & Logs",
         icon: ShieldCheck,
-        isPlanned: true
+        badge: undefined
       },
       {
         id: "admin_backup",
         titleAr: "النسخ الاحتياطي والاستعادة",
         titleEn: "Backup & Restore",
         icon: HardDrive,
-        isPlanned: true
+        badge: undefined
       },
       {
         id: "admin_sync_status",
         titleAr: "حالة المزامنة والربط",
         titleEn: "Sync & Queue Status",
         icon: RefreshCcw,
-        isPlanned: true
+        badge: undefined
       }
     ]
   }

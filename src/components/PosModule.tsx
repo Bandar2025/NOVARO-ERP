@@ -1,12 +1,13 @@
 import React, { useState } from "react";
 import { useAppState } from "../context/StateContext";
-import { Item, SalesInvoiceItem } from "../types";
+import { Item, SalesInvoiceItem, ZatcaDocumentRecord } from "../types";
 import { 
   ShoppingCart, Plus, Minus, Trash2, Check, FileText, 
-  DollarSign, Tag, Info, UserCheck, RefreshCw, Printer, Landmark, Sparkles
+  DollarSign, Tag, Info, UserCheck, RefreshCw, Printer, Landmark, Sparkles, QrCode, Lock, Unlock
 } from "lucide-react";
 import PageHeader from "./common/PageHeader";
 import GlobalActionBar from "./common/GlobalActionBar";
+import ZatcaQRModal from "./common/ZatcaQRModal";
 
 interface CartItem {
   item: Item;
@@ -19,9 +20,23 @@ interface PosModuleProps {
 
 export default function PosModule({ language = "ar" }: PosModuleProps) {
   const isAr = language === "ar";
-  const { items, addSalesInvoice, currentUser, addToast } = useAppState();
+  const {
+    items,
+    addSalesInvoice,
+    currentUser,
+    addToast,
+    posSessions,
+    openPOSSession,
+    closePOSSession,
+    zatcaRecords
+  } = useAppState();
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [cashier, setCashier] = useState(currentUser?.name || (isAr ? "صالح الكاشير" : "Saleh Cashier"));
+  const [cashier] = useState(currentUser?.username || (isAr ? "صالح الكاشير" : "Saleh Cashier"));
+  const [selectedZatcaRecord, setSelectedZatcaRecord] = useState<ZatcaDocumentRecord | null>(null);
+  const [actualCashCounted, setActualCashCounted] = useState<string>("");
+  const [showCloseShiftModal, setShowCloseShiftModal] = useState(false);
+
+  const activeSession = posSessions.find(s => s.status === "Open");
   
   // Checkout completion receipt
   const [lastReceipt, setLastReceipt] = useState<{
@@ -136,8 +151,8 @@ export default function PosModule({ language = "ar" }: PosModuleProps) {
       setCart([]);
       addToast({
         type: "success",
-        message: "تم إصدار تسوية نقطة البيع النقدية وترحيل الضريبة وصافي الأرباح",
-        messageEn: "POS checkout invoice posted and cash drawer balances updated"
+        message: "تم إصدار تسوية نقطة البيع النقدية وترحيل الضريبة وختم ZATCA تلقائياً",
+        messageEn: "POS checkout invoice posted and ZATCA cryptographic stamp generated"
       });
     } else {
       setCheckoutError(res.error || "POS Checkout failed.");
@@ -146,56 +161,15 @@ export default function PosModule({ language = "ar" }: PosModuleProps) {
 
   const printReceipt = () => {
     if (!lastReceipt) return;
-    const printWindow = window.open("", "_blank");
-    if (!printWindow) return;
+    window.print();
+  };
 
-    printWindow.document.write(`
-      <html dir="rtl">
-        <head>
-          <title>فاتورة مبسطة - ${lastReceipt.invoiceId}</title>
-          <style>
-            body { font-family: monospace; padding: 20px; color: #000; background: white; text-align: center; }
-            .receipt-box { width: 280px; margin: 0 auto; border: 1px dashed #000; padding: 15px; }
-            .title { font-size: 14px; font-weight: bold; margin-bottom: 5px; }
-            .meta { text-align: right; font-size: 11px; margin-bottom: 10px; border-bottom: 1px dashed #000; padding-bottom: 8px; }
-            .item-row { display: flex; justify-content: space-between; font-size: 11px; margin: 4px 0; }
-            .totals { font-size: 11px; text-align: left; border-top: 1px dashed #000; padding-top: 8px; margin-top: 8px; }
-          </style>
-        </head>
-        <body onload="window.print()">
-          <div class="receipt-box">
-            <div class="title">نوفـارو للـمـواد الغـذائيـة</div>
-            <div style="font-size: 9px; margin-bottom: 5px;">Simplified Tax Invoice</div>
-            
-            <div class="meta">
-              <div>رقم الفاتورة: ${lastReceipt.invoiceId}</div>
-              <div>تاريخ ووقت السداد: ${lastReceipt.date}</div>
-              <div>الكاشير: ${cashier}</div>
-              <div>طريقة الدفع: كاش نقدية</div>
-            </div>
-
-            <div style="font-weight: bold; font-size: 10px; text-align: right; margin-bottom: 5px;">تفاصيل السلة:</div>
-            ${lastReceipt.items.map(i => `
-              <div class="item-row">
-                <span>${i.itemName} x${i.quantity}</span>
-                <span>SAR ${i.total.toFixed(2)}</span>
-              </div>
-            `).join("")}
-
-            <div class="totals">
-              <div class="item-row"><span>المجموع الخاضع:</span> <span>SAR ${lastReceipt.subtotal.toFixed(2)}</span></div>
-              <div class="item-row"><span>ضريبة المبيعات 15%:</span> <span>SAR ${lastReceipt.vat.toFixed(2)}</span></div>
-              <div class="item-row" style="font-weight: bold; font-size: 12px; border-top: 1px dotted #000; padding-top: 5px; margin-top: 3px;">
-                <span>المبلغ الكلي المدفوع:</span> <span>SAR ${lastReceipt.total.toFixed(2)}</span>
-              </div>
-            </div>
-
-            <div style="font-size: 8px; margin-top: 15px; color: #555;">شكراً لزيارتكم مصنع ومعارض نوفارو للبن والتوابل</div>
-          </div>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
+  const handleCloseShift = (e: React.FormEvent) => {
+    e.preventDefault();
+    const counted = actualCashCounted ? parseFloat(actualCashCounted) : undefined;
+    closePOSSession(counted);
+    setShowCloseShiftModal(false);
+    setActualCashCounted("");
   };
 
   return (
@@ -203,8 +177,8 @@ export default function PosModule({ language = "ar" }: PosModuleProps) {
       <PageHeader
         title="كاشير ونقاط البيع السريعة"
         titleEn="Retail Point of Sale (POS)"
-        description="إصدار فواتير نقاط البيع الفورية، احتساب ضريبة القيمة المضافة، وطباعة الإيصالات المبسطة."
-        descriptionEn="Instant retail cash checkout, automated VAT calculation, and simplified tax receipts."
+        description="إصدار فواتير نقاط البيع الفورية، إدارة الورديات النقدية، احتساب ضريبة القيمة المضافة، وختم ZATCA المبسط."
+        descriptionEn="Instant retail cash checkout, shift reconciliation, automated VAT calculation, and ZATCA simplified tax receipts."
         icon={ShoppingCart}
         breadcrumbs={[
           { label: "المبيعات والعملاء", labelEn: "Sales & CRM" },
@@ -220,16 +194,46 @@ export default function PosModule({ language = "ar" }: PosModuleProps) {
         newLabelEn="Checkout Cart"
         onPrint={lastReceipt ? printReceipt : undefined}
         totalCount={cart.length}
-        extraActions={cart.length > 0 ? [
-          {
-            id: "act-clear-cart",
-            labelAr: "تفريغ السلة",
-            labelEn: "Clear Cart",
-            icon: Trash2,
-            variant: "danger",
-            onClick: () => setCart([])
-          }
-        ] : []}
+        extraActions={[
+          ...(cart.length > 0
+            ? [
+                {
+                  id: "act-clear-cart",
+                  labelAr: "تفريغ السلة",
+                  labelEn: "Clear Cart",
+                  icon: Trash2,
+                  variant: "danger" as const,
+                  onClick: () => setCart([])
+                }
+              ]
+            : []),
+          ...(activeSession
+            ? [
+                {
+                  id: "act-close-shift",
+                  labelAr: `إغلاق وجرد الوردية (${activeSession.id})`,
+                  labelEn: `Close POS Shift (${activeSession.id})`,
+                  icon: Lock,
+                  variant: "secondary" as const,
+                  onClick: () => {
+                    setActualCashCounted(
+                      String(activeSession.startingCash + activeSession.totalCashSales)
+                    );
+                    setShowCloseShiftModal(true);
+                  }
+                }
+              ]
+            : [
+                {
+                  id: "act-open-shift",
+                  labelAr: "فتح وردية صندوق جديدة (1,500 ر.س)",
+                  labelEn: "Open POS Shift (1,500 SAR)",
+                  icon: Unlock,
+                  variant: "success" as const,
+                  onClick: () => openPOSSession(1500)
+                }
+              ])
+        ]}
         pageId="pos"
         language={language}
       />
@@ -418,13 +422,28 @@ export default function PosModule({ language = "ar" }: PosModuleProps) {
 
             <div className="text-center border-t border-dashed border-slate-200 pt-3 space-y-2">
               <span className="text-[9px] text-slate-400 block uppercase">نشكركم لزيارتنا!</span>
-              <button
-                onClick={printReceipt}
-                className="mx-auto px-2.5 py-1.5 bg-slate-150 hover:bg-slate-200 rounded text-[9px] font-bold text-slate-700 flex items-center gap-1 border border-slate-200 transition"
-              >
-                <Printer className="w-3 h-3" />
-                <span>{isAr ? "طباعة الإيصال المالي" : "Print Receipt"}</span>
-              </button>
+              <div className="flex items-center justify-center gap-2">
+                <button
+                  onClick={printReceipt}
+                  className="px-2.5 py-1.5 bg-slate-150 hover:bg-slate-200 rounded text-[9px] font-bold text-slate-700 flex items-center gap-1 border border-slate-200 transition"
+                >
+                  <Printer className="w-3 h-3" />
+                  <span>{isAr ? "طباعة الإيصال المالي" : "Print Receipt"}</span>
+                </button>
+                {zatcaRecords.find(r => r.documentId === lastReceipt.invoiceId) && (
+                  <button
+                    onClick={() =>
+                      setSelectedZatcaRecord(
+                        zatcaRecords.find(r => r.documentId === lastReceipt.invoiceId) || null
+                      )
+                    }
+                    className="px-2.5 py-1.5 bg-teal-50 hover:bg-teal-100 rounded text-[9px] font-bold text-teal-700 flex items-center gap-1 border border-teal-200 transition"
+                  >
+                    <QrCode className="w-3 h-3" />
+                    <span>{isAr ? "ختم ZATCA QR" : "ZATCA QR"}</span>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -432,6 +451,74 @@ export default function PosModule({ language = "ar" }: PosModuleProps) {
         </div>
       </div>
 
+      {/* Close POS Shift Modal */}
+      {showCloseShiftModal && activeSession && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <form
+            onSubmit={handleCloseShift}
+            className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl"
+          >
+            <h3 className="text-lg font-bold text-slate-900">
+              {isAr ? `إغلاق وجرد وردية الصندوق (${activeSession.id})` : `Close POS Shift (${activeSession.id})`}
+            </h3>
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-1">
+              <div className="flex justify-between">
+                <span>رصيد الافتتاح (العهدة):</span>
+                <span className="font-mono font-bold">SAR {activeSession.startingCash.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>إجمالي المبيعات النقدية بالوردية:</span>
+                <span className="font-mono font-bold text-emerald-700">SAR {activeSession.totalCashSales.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between border-t border-slate-200 pt-1 font-bold">
+                <span>النقد المتوقع بالدرج دفترياً:</span>
+                <span className="font-mono text-teal-700">
+                  SAR {(activeSession.startingCash + activeSession.totalCashSales).toFixed(2)}
+                </span>
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                النقد الفعلي المعدود في الدرج (SAR)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                required
+                value={actualCashCounted}
+                onChange={(e) => setActualCashCounted(e.target.value)}
+                className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono"
+              />
+              <span className="text-[11px] text-slate-500 mt-1 block">
+                سيتم ترحيل قيد تسوية العجز أو الزيادة في الصندوق تلقائياً إن وجد فارق.
+              </span>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowCloseShiftModal(false)}
+                className="px-4 py-2 text-xs font-bold text-slate-600"
+              >
+                إلغاء
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-2 bg-teal-700 text-white rounded-xl text-xs font-bold"
+              >
+                اعتماد الجرد وإغلاق الوردية
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {selectedZatcaRecord && (
+        <ZatcaQRModal
+          record={selectedZatcaRecord}
+          onClose={() => setSelectedZatcaRecord(null)}
+          language={language}
+        />
+      )}
     </div>
   );
 }
