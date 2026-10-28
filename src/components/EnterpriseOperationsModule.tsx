@@ -493,7 +493,7 @@ export default function EnterpriseOperationsModule({
                 {payrollRuns.length} مسير
               </div>
               <div className="text-xs text-slate-500 mt-1">
-                {journalEntries.filter((j) => j.description.includes("رواتب") || j.description.includes("Payroll")).length} قيد يومية مرحل
+                {journalEntries.filter((j) => (j.notes || "").includes("رواتب") || (j.notes || "").includes("Payroll") || (j.reference || "").includes("PAY")).length} قيد يومية مرحل
               </div>
             </div>
           </div>

@@ -2,7 +2,7 @@ import {
   Account, AccountType, Customer, Supplier, Warehouse, Item, ItemCategory, 
   Recipe, JournalEntry, Batch, RoastingJob, GrindingJob, PackagingJob, 
   PurchaseOrder, SalesInvoice, POSSession, BankTransaction, User, AuditLog, Backup,
-  JobStatus, SalesQuotation, SalesOrder, DeliveryNote, SalesReturn, PurchaseRequest,
+  JobStatus, Currency, SalesQuotation, SalesOrder, DeliveryNote, SalesReturn, PurchaseRequest,
   PurchaseReturn, FixedAsset, Employee, PayrollRun, CrmLead, CostCenter
 } from "../types";
 
@@ -110,32 +110,63 @@ export const initialSuppliers: Supplier[] = [
   { id: "sup-3", name: "Gulf Packaging Solutions", nameAr: "حلول التغليف الخليجية", email: "info@gulfpack.sa", phone: "+966 13 812 5555", address: "Dammam Second Industrial City", balance: 0 }
 ];
 
-// Sample Journal Entries (Double Entry Bookkeeping)
+// Sample Journal Entries (Double Entry Bookkeeping - 100% Balanced & Sub-Ledger Matched)
 export const initialJournalEntries: JournalEntry[] = [
   {
     id: "JE-2026-0001",
     date: "2026-07-01",
     reference: "OB-2026",
-    notes: "Opening balance setup of Novaro Roasting Factory",
+    notes: "القيد الافتتاحي المعتمد لمصنع ومحمصة نوفارو للقهوة (Opening Balances)",
     posted: true,
+    workflowStatus: "Posted",
+    currency: Currency.SAR,
+    exchangeRate: 1,
     items: [
-      { id: "jei-1", accountId: "acc-1100", accountName: "Al-Rajhi Bank", debit: 450000, credit: 0 },
-      { id: "jei-2", accountId: "acc-1000", accountName: "Cash in Hand", debit: 125000, credit: 0 },
-      { id: "jei-3", accountId: "acc-1400", accountName: "Machinery & Equipment", debit: 180000, credit: 0 },
+      { id: "jei-1", accountId: "acc-1100", accountName: "Al-Rajhi Bank", debit: 465000, credit: 0 },
+      { id: "jei-2", accountId: "acc-1000", accountName: "Cash in Hand", debit: 109625, credit: 0 },
+      { id: "jei-3", accountId: "acc-1200", accountName: "Accounts Receivable", debit: 45000, credit: 0 },
       { id: "jei-4", accountId: "acc-1300", accountName: "Raw Material Stock", debit: 85000, credit: 0 },
-      { id: "jei-5", accountId: "acc-3000", accountName: "Owner's Capital", debit: 0, credit: 800000 },
-      { id: "jei-6", accountId: "acc-3100", accountName: "Retained Earnings", debit: 0, credit: 40000 }
+      { id: "jei-5", accountId: "acc-1310", accountName: "Finished Product Stock", debit: 93800, credit: 0 },
+      { id: "jei-6", accountId: "acc-1400", accountName: "Machinery & Equipment", debit: 180000, credit: 0 },
+      { id: "jei-7", accountId: "acc-2000", accountName: "Accounts Payable", debit: 0, credit: 35000 },
+      { id: "jei-8", accountId: "acc-2100", accountName: "VAT Payable (15%)", debit: 0, credit: 5425 },
+      { id: "jei-9", accountId: "acc-3000", accountName: "Owner's Capital", debit: 0, credit: 800000 },
+      { id: "jei-10", accountId: "acc-3100", accountName: "Retained Earnings", debit: 0, credit: 138000 }
     ]
   },
   {
     id: "JE-2026-0002",
     date: "2026-07-05",
     reference: "RENT-07-26",
-    notes: "Payment of monthly factory rent from Al-Rajhi Bank",
+    notes: "سداد إيجار المصنع والمحمصة الشهري ومصاريف الطاقة من مصرف الراجحي",
     posted: true,
+    workflowStatus: "Posted",
+    currency: Currency.SAR,
+    exchangeRate: 1,
     items: [
-      { id: "jei-7", accountId: "acc-5100", accountName: "Roasting Factory Rent", debit: 15000, credit: 0 },
-      { id: "jei-8", accountId: "acc-1100", accountName: "Al-Rajhi Bank", debit: 0, credit: 15000 }
+      { id: "jei-11", accountId: "acc-5100", accountName: "Roasting Factory Rent", debit: 15000, credit: 0 },
+      { id: "jei-12", accountId: "acc-5200", accountName: "Utilities & Power (Roasters)", debit: 4200, credit: 0 },
+      { id: "jei-13", accountId: "acc-5300", accountName: "Staff Salaries & Wages", debit: 28000, credit: 0 },
+      { id: "jei-14", accountId: "acc-1100", accountName: "Al-Rajhi Bank", debit: 0, credit: 47200 }
+    ]
+  },
+  {
+    id: "JE-2026-0003",
+    date: "2026-07-09",
+    reference: "SI-2026-0001",
+    notes: "إثبات مبيعات الجملة والتجزئة النقدية والآجلة مع ضريبة القيمة المضافة وتكلفة البضاعة المباعة",
+    posted: true,
+    workflowStatus: "Posted",
+    currency: Currency.SAR,
+    exchangeRate: 1,
+    items: [
+      { id: "jei-15", accountId: "acc-1100", accountName: "Al-Rajhi Bank", debit: 132200, credit: 0 },
+      { id: "jei-16", accountId: "acc-1000", accountName: "Cash in Hand", debit: 15375, credit: 0 },
+      { id: "jei-17", accountId: "acc-4000", accountName: "Wholesale Revenue", debit: 0, credit: 115000 },
+      { id: "jei-18", accountId: "acc-4100", accountName: "POS Retail Revenue", debit: 0, credit: 15500 },
+      { id: "jei-19", accountId: "acc-2100", accountName: "VAT Payable (15%)", debit: 0, credit: 17075 },
+      { id: "jei-20", accountId: "acc-5000", accountName: "Cost of Goods Sold (COGS)", debit: 31800, credit: 0 },
+      { id: "jei-21", accountId: "acc-1310", accountName: "Finished Product Stock", debit: 0, credit: 31800 }
     ]
   }
 ];

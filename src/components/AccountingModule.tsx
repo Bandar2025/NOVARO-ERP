@@ -24,6 +24,7 @@ export default function AccountingModule({ language = "ar" }: AccountingModulePr
     accounts, journalEntries, postJournalEntry, reverseJournalEntry, 
     companySettings, setCompanySettings, exchangeRates, setExchangeRates, 
     recurringEntries, postRecurringEntry, addRecurringEntry, fiscalYearClosing,
+    fiscalPeriods, toggleFiscalPeriodLock, addAccount, deleteAccount, addAuditLog,
     updateDocumentWorkflowStatus, addToast, currentUser, checkUserPermission 
   } = useAppState();
 
@@ -58,6 +59,13 @@ export default function AccountingModule({ language = "ar" }: AccountingModulePr
   const [closingNotes, setClosingNotes] = useState("");
   const [closingError, setClosingError] = useState<string | null>(null);
   const [closingSuccess, setClosingSuccess] = useState<string | null>(null);
+
+  // Add Account Modal state (Chart of Accounts)
+  const [showAddAccountForm, setShowAddAccountForm] = useState(false);
+  const [newAccCode, setNewAccCode] = useState("");
+  const [newAccName, setNewAccName] = useState("");
+  const [newAccNameAr, setNewAccNameAr] = useState("");
+  const [newAccType, setNewAccType] = useState<AccountType>(AccountType.Expense);
 
   // Settings form state
   const [settingsForm, setSettingsForm] = useState(companySettings);
@@ -356,11 +364,38 @@ export default function AccountingModule({ language = "ar" }: AccountingModulePr
   const handleSaveSettings = (e: React.FormEvent) => {
     e.preventDefault();
     setCompanySettings(settingsForm);
+    addAuditLog(
+      "Update Company & Tax Settings",
+      `Updated company profile (${settingsForm.nameAr}) and VAT rate (${(settingsForm.taxConfiguration.vatRate * 100).toFixed(0)}%)`
+    );
     addToast({
       type: "success",
-      message: "تم حفظ إعدادات الشركة ومعلومات الضريبة بنجاح",
-      messageEn: "Company details and VAT rules updated successfully"
+      message: "تم حفظ إعدادات الشركة ومعلومات الضريبة بنجاح وتوثيقها في سجل التدقيق",
+      messageEn: "Company details and VAT rules updated and audited successfully"
     });
+  };
+
+  const handleCreateAccount = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newAccCode.trim() || !newAccName.trim() || !newAccNameAr.trim()) return;
+    if (accounts.some(a => a.code === newAccCode.trim())) {
+      addToast({
+        type: "error",
+        message: `رمز الحساب (${newAccCode}) مستخدم بالفعل في شجرة الحسابات`,
+        messageEn: `Account code (${newAccCode}) already exists in Chart of Accounts`
+      });
+      return;
+    }
+    addAccount({
+      code: newAccCode.trim(),
+      name: newAccName.trim(),
+      nameAr: newAccNameAr.trim(),
+      type: newAccType
+    });
+    setNewAccCode("");
+    setNewAccName("");
+    setNewAccNameAr("");
+    setShowAddAccountForm(false);
   };
 
   const totalDebits = jeItems.reduce((acc, item) => acc + item.debit, 0);
@@ -440,6 +475,21 @@ export default function AccountingModule({ language = "ar" }: AccountingModulePr
         onNew={() => setActiveSubTab("je")}
         newLabelAr="إنشاء قيد يومية"
         newLabelEn="New Journal Voucher"
+        extraActions={[
+          {
+            id: "add-coa-account",
+            labelAr: "إضافة حساب لشجرة الحسابات",
+            labelEn: "Add COA Account",
+            icon: Plus,
+            variant: "secondary",
+            permissionRequired: true,
+            requiredAction: "create",
+            onClick: () => {
+              setActiveSubTab("coa");
+              setShowAddAccountForm(true);
+            }
+          }
+        ]}
         totalCount={journalEntries.length}
         pageId="accounting"
         language={language}
@@ -511,12 +561,94 @@ export default function AccountingModule({ language = "ar" }: AccountingModulePr
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs lg:col-span-2 space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <span className="text-[9px] uppercase font-mono font-bold text-slate-400 bg-slate-100 px-2.5 py-1 rounded">IFRS / SOCPA Compliance</span>
+              <div className="flex items-center gap-2">
+                <span className="text-[9px] uppercase font-mono font-bold text-slate-400 bg-slate-100 px-2.5 py-1 rounded">IFRS / SOCPA Compliance</span>
+                <button
+                  type="button"
+                  onClick={() => setShowAddAccountForm(!showAddAccountForm)}
+                  className="px-3 py-1.5 rounded-lg bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold flex items-center gap-1"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>{isAr ? "حساب مالي جديد" : "New Account"}</span>
+                </button>
+              </div>
               <div>
                 <h3 className="font-extrabold text-slate-900 text-sm">{isAr ? "الهيكل الهرمي المعتمد لشجرة الحسابات" : "Visual Account Hierarchy"}</h3>
                 <p className="text-[10px] text-slate-500">{isAr ? "تتبع الأرصدة والتقارير المالية الفورية بالتوافق مع معايير IFRS" : "Real-time assets, liabilities and equity chart."}</p>
               </div>
             </div>
+
+            {showAddAccountForm && (
+              <form onSubmit={handleCreateAccount} className="p-4 bg-teal-50/60 border border-teal-200 rounded-xl space-y-3 text-xs">
+                <div className="flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddAccountForm(false)}
+                    className="text-slate-500 hover:text-slate-700 font-bold"
+                  >
+                    {isAr ? "إغلاق" : "Cancel"}
+                  </button>
+                  <h4 className="font-extrabold text-teal-900">{isAr ? "إضافة حساب جديد إلى شجرة الحسابات" : "Add New Account to COA"}</h4>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-right">
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-600 block mb-1">{isAr ? "رمز الحساب (Code)" : "Account Code"}</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 5400"
+                      value={newAccCode}
+                      onChange={e => setNewAccCode(e.target.value)}
+                      className="w-full p-2 rounded-lg border border-slate-200 bg-white font-mono text-center"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-600 block mb-1">{isAr ? "الاسم بالعربية" : "Arabic Name"}</label>
+                    <input
+                      type="text"
+                      placeholder="مثال: مصاريف تسويق وتغليف"
+                      value={newAccNameAr}
+                      onChange={e => setNewAccNameAr(e.target.value)}
+                      className="w-full p-2 rounded-lg border border-slate-200 bg-white text-right"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-600 block mb-1">{isAr ? "الاسم بالإنجليزية" : "English Name"}</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Marketing Expense"
+                      value={newAccName}
+                      onChange={e => setNewAccName(e.target.value)}
+                      className="w-full p-2 rounded-lg border border-slate-200 bg-white text-left"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-600 block mb-1">{isAr ? "تصنيف الحساب" : "Account Type"}</label>
+                    <select
+                      value={newAccType}
+                      onChange={e => setNewAccType(e.target.value as AccountType)}
+                      className="w-full p-2 rounded-lg border border-slate-200 bg-white font-bold"
+                    >
+                      <option value={AccountType.Asset}>{isAr ? "الأصول (Asset)" : "Asset"}</option>
+                      <option value={AccountType.Liability}>{isAr ? "الالتزامات (Liability)" : "Liability"}</option>
+                      <option value={AccountType.Equity}>{isAr ? "حقوق الملكية (Equity)" : "Equity"}</option>
+                      <option value={AccountType.Income}>{isAr ? "الإيرادات (Income)" : "Income"}</option>
+                      <option value={AccountType.Expense}>{isAr ? "المصاريف (Expense)" : "Expense"}</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-teal-700 hover:bg-teal-800 text-white rounded-lg font-bold"
+                  >
+                    {isAr ? "حفظ وإدراج الحساب" : "Create Account"}
+                  </button>
+                </div>
+              </form>
+            )}
 
             <div className="space-y-3 pt-2">
               {Object.keys(accountsByType).map((typeKey) => {
@@ -548,9 +680,21 @@ export default function AccountingModule({ language = "ar" }: AccountingModulePr
                       <div className="bg-white divide-y divide-slate-100 px-4 py-1">
                         {folderAccounts.map((acc) => (
                           <div key={acc.id} className="flex items-center justify-between py-3 text-xs">
-                            <span className={`font-mono font-bold ${acc.balance >= 0 ? "text-slate-800" : "text-rose-600"}`}>
-                              SAR {acc.balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className={`font-mono font-bold ${acc.balance >= 0 ? "text-slate-800" : "text-rose-600"}`}>
+                                SAR {acc.balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </span>
+                              {acc.balance === 0 && !acc.id.startsWith("acc-1") && !acc.id.startsWith("acc-2") && !acc.id.startsWith("acc-3") && !acc.id.startsWith("acc-4") && !acc.id.startsWith("acc-5") && (
+                                <button
+                                  type="button"
+                                  onClick={() => deleteAccount(acc.id)}
+                                  title={isAr ? "حذف الحساب غير المستخدم" : "Delete unused account"}
+                                  className="text-rose-500 hover:text-rose-700 p-1"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
                             <div className="flex items-center gap-3">
                               <div>
                                 <span className="font-extrabold text-slate-800 block">{isAr ? acc.nameAr : acc.name}</span>
@@ -1105,6 +1249,7 @@ export default function AccountingModule({ language = "ar" }: AccountingModulePr
                           const val = parseFloat(e.target.value);
                           if (val > 0) {
                             setExchangeRates(prev => prev.map(r => r.id === rate.id ? { ...r, rate: val, date: new Date().toISOString().split("T")[0] } : r));
+                            addAuditLog("Update Exchange Rate", `Updated exchange rate ${rate.from}/${rate.to} to ${val}`);
                           }
                         }}
                       />
@@ -1212,6 +1357,59 @@ export default function AccountingModule({ language = "ar" }: AccountingModulePr
               </button>
             </form>
 
+          </div>
+
+          {/* Fiscal Period Lock Governance Table inside Accounting Closing */}
+          <div className="pt-4 border-t border-slate-150 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-mono text-teal-700 font-bold">Fiscal Period Lock Enforcement</span>
+              <h4 className="font-extrabold text-slate-900 text-xs">
+                {isAr ? "إدارة قفل وفتح الفترات المحاسبية الربع سنوية (Fiscal Periods)" : "Quarterly Fiscal Period Locks"}
+              </h4>
+            </div>
+            <div className="overflow-x-auto rounded-xl border border-slate-200">
+              <table className="w-full text-xs text-right">
+                <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+                  <tr>
+                    <th className="p-2.5">{isAr ? "الفترة المالية" : "Period"}</th>
+                    <th className="p-2.5">{isAr ? "تاريخ البداية" : "Start Date"}</th>
+                    <th className="p-2.5">{isAr ? "تاريخ النهاية" : "End Date"}</th>
+                    <th className="p-2.5">{isAr ? "الحالة" : "Status"}</th>
+                    <th className="p-2.5">{isAr ? "التحكم في القفل" : "Action"}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {fiscalPeriods.map((fp) => {
+                    const isLocked = Boolean(fp.isClosed || fp.status === "CLOSED" || fp.status === "LOCKED" || fp.status === "Locked" || fp.status === "Closed");
+                    return (
+                      <tr key={fp.id} className="hover:bg-slate-50">
+                        <td className="p-2.5 font-bold text-slate-900">{fp.name || fp.code}</td>
+                        <td className="p-2.5 font-mono text-slate-600">{fp.startDate}</td>
+                        <td className="p-2.5 font-mono text-slate-600">{fp.endDate}</td>
+                        <td className="p-2.5">
+                          <StatusBadge status={isLocked ? "Closed" : "Active"} language={language} size="sm" />
+                        </td>
+                        <td className="p-2.5">
+                          <button
+                            type="button"
+                            onClick={() => toggleFiscalPeriodLock(fp.id)}
+                            className={`px-3 py-1 rounded-lg font-bold text-[11px] transition ${
+                              isLocked
+                                ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                                : "bg-rose-50 text-rose-700 hover:bg-rose-100"
+                            }`}
+                          >
+                            {isLocked
+                              ? isAr ? "إعادة فتح الفترة للترحيل" : "Unlock Period"
+                              : isAr ? "قفل الفترة ومنع الترحيل" : "Lock Period"}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}

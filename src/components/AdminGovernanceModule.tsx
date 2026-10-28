@@ -39,6 +39,8 @@ export default function AdminGovernanceModule({
     fiscalPeriods,
     toggleFiscalPeriodLock,
     users,
+    currentUser,
+    setCurrentUser,
     permissionsByRole,
     auditLogs,
     backups,
@@ -73,23 +75,24 @@ export default function AdminGovernanceModule({
   const handleIntegrityCheck = () => {
     const res = runDataIntegrityAudit();
     setIntegrityReport(res);
+    const isHealthy = res.overallStatus === "HEALTHY";
     setNotice({
-      type: res.isHealthy ? "success" : "error",
-      text: res.isHealthy
-        ? "فحص سلامة البيانات: جميع القيود متوازنة وطبقات FIFO متطابقة 100%."
-        : `تم رصد ملاحظات (${res.errors.length} أخطاء / ${res.warnings.length} تنبيهات).`,
+      type: isHealthy ? "success" : "error",
+      text: isHealthy
+        ? "فحص سلامة البيانات: جميع القيود متوازنة وميزان المراجعة والميزانية العمومية وطبقات FIFO متطابقة 100%."
+        : `تم رصد ملاحظات (${res.criticalCount} أخطاء حرجة / ${res.warningCount} تنبيهات).`,
     });
   };
 
   const handleCertify = () => {
     const res = runMasterCertification();
     setCertReport(res);
+    const isCertified = res.status === "PASSED";
     setNotice({
-      type: res.overallStatus === "CERTIFIED" ? "success" : "error",
-      text:
-        res.overallStatus === "CERTIFIED"
-          ? `اجتاز النظام شهادة الفحص الشامل (${res.passedChecks}/${res.totalChecks} اختبار).`
-          : "يرجى مراجعة تفاصيل الفحص القياسي.",
+      type: isCertified ? "success" : "error",
+      text: isCertified
+        ? `اجتاز النظام شهادة الفحص الشامل (${res.passedCount}/${res.totalChecks} اختبار قياسي).`
+        : `فشل في بعض الفحوصات (${res.failedCount} فشل من أصل ${res.totalChecks}). يرجى مراجعة التفاصيل.`,
     });
   };
 
@@ -160,8 +163,8 @@ export default function AdminGovernanceModule({
             {fiscalPeriods.length} فترات
           </div>
           <div className="text-xs text-slate-500 mt-1">
-            {fiscalPeriods.filter((p) => p.status === "Locked" || p.status === "Closed").length} مقفلة /{" "}
-            {fiscalPeriods.filter((p) => p.status === "Open").length} مفتوحة
+            {fiscalPeriods.filter((p) => p.isClosed || p.status === "CLOSED" || p.status === "LOCKED" || p.status === "Locked" || p.status === "Closed").length} مقفلة /{" "}
+            {fiscalPeriods.filter((p) => !(p.isClosed || p.status === "CLOSED" || p.status === "LOCKED" || p.status === "Locked" || p.status === "Closed")).length} مفتوحة
           </div>
         </div>
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
@@ -210,8 +213,8 @@ export default function AdminGovernanceModule({
                 حوكمة الفترات المالية والمنشأة ({companySettings.nameAr || companySettings.name})
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                الرقم الضريبي: {companySettings.vatNumber} | العملة الأساسية:{" "}
-                {companySettings.baseCurrency} | الفروع والمستودعات: {warehouses.length}
+                الرقم الضريبي: {companySettings.taxNumber} | العملة الأساسية:{" "}
+                {companySettings.defaultCurrency} | الفروع والمستودعات: {warehouses.length}
               </p>
             </div>
           </div>
@@ -228,10 +231,10 @@ export default function AdminGovernanceModule({
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {fiscalPeriods.map((fp) => {
-                  const isLocked = fp.status === "Locked" || fp.status === "Closed";
+                  const isLocked = Boolean(fp.isClosed || fp.status === "CLOSED" || fp.status === "LOCKED" || fp.status === "Locked" || fp.status === "Closed");
                   return (
                     <tr key={fp.id} className="hover:bg-slate-50/70">
-                      <td className="p-3 font-bold text-slate-900">{fp.name}</td>
+                      <td className="p-3 font-bold text-slate-900">{fp.name || fp.code}</td>
                       <td className="p-3 font-mono text-xs">{fp.startDate}</td>
                       <td className="p-3 font-mono text-xs">{fp.endDate}</td>
                       <td className="p-3">
@@ -285,24 +288,49 @@ export default function AdminGovernanceModule({
                   <th className="p-3">المستخدم</th>
                   <th className="p-3">البريد الإلكتروني</th>
                   <th className="p-3">الدور الوظيفي</th>
-                  <th className="p-3">عدد الصفحات المصرح بها</th>
+                  <th className="p-3">الصلاحيات والوحدات</th>
                   <th className="p-3">الحالة</th>
+                  <th className="p-3">اختبار الصلاحية (Switch Role)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {users.map((u) => (
-                  <tr key={u.id} className="hover:bg-slate-50/70">
-                    <td className="p-3 font-bold text-slate-900">{u.username}</td>
-                    <td className="p-3 text-slate-600 font-mono text-xs">{u.email}</td>
-                    <td className="p-3 font-mono text-xs text-teal-700 font-bold">{u.role}</td>
-                    <td className="p-3 text-xs">
-                      {(permissionsByRole[u.role]?.pages || []).length} وحدات معتمدة
-                    </td>
-                    <td className="p-3">
-                      <StatusBadge status="Active" language={language} size="sm" />
-                    </td>
-                  </tr>
-                ))}
+                {users.map((u) => {
+                  const isCurrent = currentUser.id === u.id;
+                  return (
+                    <tr key={u.id} className="hover:bg-slate-50/70">
+                      <td className="p-3 font-bold text-slate-900">{u.username}</td>
+                      <td className="p-3 text-slate-600 font-mono text-xs">{u.email}</td>
+                      <td className="p-3 font-mono text-xs text-teal-700 font-bold">{u.role}</td>
+                      <td className="p-3 text-xs">
+                        {(permissionsByRole[u.role]?.pages || []).length} وحدات |{" "}
+                        {(permissionsByRole[u.role]?.actions || []).join(", ")}
+                      </td>
+                      <td className="p-3">
+                        <StatusBadge status="Active" language={language} size="sm" />
+                      </td>
+                      <td className="p-3">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCurrentUser(u);
+                            setNotice({
+                              type: "success",
+                              text: `تم التبديل إلى حساب (${u.username}) بدور (${u.role}) لاختبار الصلاحيات.`
+                            });
+                          }}
+                          disabled={isCurrent}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                            isCurrent
+                              ? "bg-teal-700 text-white cursor-default"
+                              : "bg-slate-100 hover:bg-teal-50 text-slate-700 hover:text-teal-800 border border-slate-200"
+                          }`}
+                        >
+                          {isCurrent ? "الحساب النشط حالياً" : "تفعيل هذا الدور"}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -380,9 +408,16 @@ export default function AdminGovernanceModule({
         <div className="bg-white rounded-2xl border border-slate-200 p-4 space-y-2">
           <h4 className="font-bold text-sm text-slate-900">نتيجة فحص التكامل المحاسبي والمخزني</h4>
           <p className="text-xs text-slate-600">
-            الحالة الصحية: {integrityReport.isHealthy ? "سليم 100%" : "يوجد ملاحظات"} | الأخطاء:{" "}
-            {integrityReport.errors.length} | التنبيهات: {integrityReport.warnings.length}
+            الحالة الصحية: {integrityReport.overallStatus === "HEALTHY" ? "سليم 100% (HEALTHY)" : integrityReport.overallStatus} | الأخطاء الحرجة:{" "}
+            {integrityReport.criticalCount} | التنبيهات: {integrityReport.warningCount}
           </p>
+          {integrityReport.findings && integrityReport.findings.length > 0 && (
+            <ul className="text-xs text-rose-700 list-disc list-inside pt-1 space-y-1">
+              {integrityReport.findings.map((f: any, i: number) => (
+                <li key={i}>{f.messageAr || f.message}</li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
 
@@ -390,7 +425,7 @@ export default function AdminGovernanceModule({
         <div className="bg-white rounded-2xl border border-slate-200 p-4 space-y-2">
           <h4 className="font-bold text-sm text-slate-900">تقرير شهادة المطابقة القياسية</h4>
           <p className="text-xs text-slate-600">
-            الحالة: {certReport.overallStatus} | الاختبارات الناجحة: {certReport.passedChecks} من أصل{" "}
+            الحالة: {certReport.status} | الاختبارات الناجحة: {certReport.passedCount} من أصل{" "}
             {certReport.totalChecks}
           </p>
         </div>

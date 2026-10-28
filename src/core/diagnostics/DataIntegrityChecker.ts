@@ -2,6 +2,7 @@
 import { Account, Batch, Customer, Supplier, Item, JournalEntry, SalesInvoice, PurchaseOrder } from "../../types";
 import { validateJournalEntryInvariants } from "../domain/accounting/JournalEntry";
 import { PostingAccountConfiguration } from "../domain/accounting/PostingAccountConfiguration";
+import { TrialBalanceService } from "../application/accounting/TrialBalanceService";
 
 export interface IntegrityFinding {
   severity: "CRITICAL" | "WARNING" | "INFO";
@@ -64,6 +65,27 @@ export class DataIntegrityChecker {
         }
       });
     });
+
+    // 1B. Check Global Trial Balance & Balance Sheet Equilibrium
+    const tb = TrialBalanceService.getTrialBalance(params.accounts, params.journalEntries);
+    if (!tb.isBalanced) {
+      findings.push({
+        severity: "CRITICAL",
+        code: "TRIAL_BALANCE_DISCREPANCY",
+        message: `Global Trial Balance discrepancy detected: ${tb.discrepancy.toFixed(2)} SAR`,
+        entityType: "TrialBalance"
+      });
+    }
+
+    const bs = TrialBalanceService.generateBalanceSheet(params.accounts, params.journalEntries);
+    if (!bs.isBalanced) {
+      findings.push({
+        severity: "CRITICAL",
+        code: "BALANCE_SHEET_DISCREPANCY",
+        message: `Balance Sheet equation discrepancy detected: ${bs.discrepancy.toFixed(2)} SAR`,
+        entityType: "BalanceSheet"
+      });
+    }
 
     // 2. Check Negative Inventory or Invalid Batch Items
     const itemIdSet = new Set(params.items.map(i => i.id));

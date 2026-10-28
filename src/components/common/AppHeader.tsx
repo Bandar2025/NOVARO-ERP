@@ -22,10 +22,25 @@ export default function AppHeader({
   onToggleMobileMenu
 }: AppHeaderProps) {
   const isAr = language === "ar";
-  const { currentUser, companySettings } = useAppState();
+  const { currentUser, setCurrentUser, users, companySettings, fiscalPeriods } = useAppState();
 
-  const activePeriod = "2026-Q1 (مفتوحة)";
-  const activePeriodEn = "2026-Q1 (Open)";
+  // Determine current active fiscal period dynamically
+  const currentPeriodObj =
+    fiscalPeriods.find((fp) => fp.code === "2026-Q3") || fiscalPeriods[0];
+  const isPeriodLocked = Boolean(
+    currentPeriodObj &&
+      (currentPeriodObj.isClosed ||
+        currentPeriodObj.status === "CLOSED" ||
+        currentPeriodObj.status === "LOCKED" ||
+        currentPeriodObj.status === "Closed" ||
+        currentPeriodObj.status === "Locked")
+  );
+  const activePeriod = currentPeriodObj
+    ? `${currentPeriodObj.code || currentPeriodObj.id} (${isPeriodLocked ? "مقفلة" : "مفتوحة"})`
+    : "2026-Q3 (مفتوحة)";
+  const activePeriodEn = currentPeriodObj
+    ? `${currentPeriodObj.code || currentPeriodObj.id} (${isPeriodLocked ? "Locked" : "Open"})`
+    : "2026-Q3 (Open)";
 
   return (
     <header className="bg-white border-b border-slate-200 sticky top-0 z-20 px-4 py-2.5 shadow-2xs">
@@ -49,14 +64,20 @@ export default function AppHeader({
             </div>
 
             {/* Fiscal Period Indicator */}
-            <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-800 rounded-lg text-xs font-bold border border-emerald-200">
-              <Calendar className="w-3.5 h-3.5 text-emerald-600" />
+            <div
+              className={`hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border ${
+                isPeriodLocked
+                  ? "bg-rose-50 text-rose-800 border-rose-200"
+                  : "bg-emerald-50 text-emerald-800 border-emerald-200"
+              }`}
+            >
+              <Calendar className={`w-3.5 h-3.5 ${isPeriodLocked ? "text-rose-600" : "text-emerald-600"}`} />
               <span>{isAr ? `الفترة: ${activePeriod}` : `Period: ${activePeriodEn}`}</span>
             </div>
           </div>
         </div>
 
-        {/* Right Side: Language Switcher, Audit Badge & User Profile */}
+        {/* Right Side: Language Switcher, Audit Badge & User Profile + Role Switcher */}
         <div className="flex items-center gap-2.5">
           {/* Audit Assurance Chip */}
           <div className="hidden sm:flex items-center gap-1 px-2.5 py-1 bg-teal-50 text-teal-800 rounded-lg text-xs font-bold border border-teal-250">
@@ -75,16 +96,28 @@ export default function AppHeader({
             <span>{isAr ? "English" : "عربي"}</span>
           </button>
 
-          {/* User Profile Pill */}
-          <div className="flex items-center gap-2 pl-1 pr-2 py-1 bg-slate-50 border border-slate-200 rounded-xl">
+          {/* Interactive User & Role Switcher Pill */}
+          <div className="flex items-center gap-2 pl-2 pr-2 py-1 bg-slate-50 border border-slate-200 rounded-xl">
             <div className="w-7 h-7 rounded-lg bg-teal-700 text-white font-black text-xs flex items-center justify-center shadow-xs">
-              {currentUser?.name ? currentUser.name.slice(0, 2).toUpperCase() : "NV"}
+              {currentUser?.username ? currentUser.username.slice(0, 2).toUpperCase() : "NV"}
             </div>
             <div className="hidden md:block text-right">
-              <div className="text-xs font-bold text-slate-800 leading-none">
-                {currentUser?.name || (isAr ? "المشرف العام" : "Administrator")}
-              </div>
-              <span className="text-[10px] text-teal-700 font-medium">
+              <select
+                aria-label={isAr ? "تبديل المستخدم / الدور الوظيفي" : "Switch User / Role"}
+                value={currentUser?.id || ""}
+                onChange={(e) => {
+                  const found = users.find((u) => u.id === e.target.value);
+                  if (found) setCurrentUser(found);
+                }}
+                className="text-xs font-bold text-slate-800 bg-transparent focus:outline-none cursor-pointer block leading-tight"
+              >
+                {users.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.username} ({u.role})
+                  </option>
+                ))}
+              </select>
+              <span className="text-[10px] text-teal-700 font-medium block">
                 {currentUser?.role || (isAr ? "إدارة العمليات" : "Operations")}
               </span>
             </div>

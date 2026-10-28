@@ -136,12 +136,14 @@ export class AccountingEngine {
     }
 
     const entryId = candidate.id || `JE-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const targetWorkflow: DocumentWorkflowStatus = candidate.workflowStatus || "Posted";
+    const isPosted = targetWorkflow === "Posted";
 
     const postedEntry: JournalEntry = {
       ...candidate,
       id: entryId,
-      posted: true,
-      workflowStatus: "Posted" as DocumentWorkflowStatus,
+      posted: isPosted,
+      workflowStatus: targetWorkflow,
       items: candidate.items.map((it, idx) => ({
         ...it,
         id: it.id || `jei-${Date.now()}-${idx}`,
@@ -164,7 +166,8 @@ export class AccountingEngine {
     existingEntries: JournalEntry[],
     reversalReason: string,
     reversalDate?: string,
-    actor = "system"
+    actor = "system",
+    fiscalPeriods: FiscalPeriod[] = []
   ): {
     success: boolean;
     reversalEntry?: JournalEntry;
@@ -176,11 +179,25 @@ export class AccountingEngine {
       return { success: false, error: `Journal entry with ID ${targetEntryId} not found.` };
     }
 
+    if (original.workflowStatus === "Cancelled" || (original.notes && original.notes.includes("[REVERSED"))) {
+      return { success: false, error: `Journal entry ${targetEntryId} has already been reversed.` };
+    }
+
     if (!original.posted && original.workflowStatus !== "Posted") {
       return { success: false, error: "Cannot reverse an unposted draft entry. Simply discard or edit it." };
     }
 
     const nowStr = reversalDate || new Date().toISOString().split("T")[0];
+
+    // Check Fiscal Period Lock for reversal date and original entry date
+    const periodCheckNow = assertPeriodAllowsPosting(nowStr, fiscalPeriods);
+    if (!periodCheckNow.allowed) {
+      return { success: false, error: periodCheckNow.reason };
+    }
+    const periodCheckOrig = assertPeriodAllowsPosting(original.date, fiscalPeriods);
+    if (!periodCheckOrig.allowed) {
+      return { success: false, error: periodCheckOrig.reason };
+    }
 
     // Invert debit and credit symmetrically
     const reversedLines: JournalEntryItem[] = original.items.map((it, idx) => ({
@@ -202,6 +219,7 @@ export class AccountingEngine {
       workflowStatus: "Posted",
       currency: original.currency || Currency.SAR,
       exchangeRate: original.exchangeRate || 1,
+      reversalOfId: original.id,
       items: reversedLines
     };
 

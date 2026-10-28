@@ -122,15 +122,17 @@ export default function GlobalActionBar({
   // Connect to actual StateContext permissions system
   const { currentUser, checkUserPermission } = useAppState();
 
+  const isReadOnlyRole = currentUser.role === "Viewer" || currentUser.role === "Auditor";
+  const canCreate = !isReadOnlyRole && (!pageId || checkUserPermission(pageId, "create"));
+  const canEdit = !isReadOnlyRole && (!pageId || checkUserPermission(pageId, "edit") || checkUserPermission(pageId, "create"));
+  const canDelete = !isReadOnlyRole && (currentUser.role === "Admin" || currentUser.role === "Owner" || (pageId ? checkUserPermission(pageId, "delete") : false));
+
   const isActionPermitted = (act: ActionItem): boolean => {
     if (!act.permissionRequired) return true;
     if (currentUser.role === "Admin" || currentUser.role === "Owner") return true;
+    if (isReadOnlyRole) return false;
     if (pageId && act.requiredAction) {
       return checkUserPermission(pageId, act.requiredAction);
-    }
-    // Default: If permissionRequired is set and user is Viewer/Auditor with non-view action, deny
-    if (currentUser.role === "Viewer" || currentUser.role === "Auditor") {
-      return false;
     }
     return true;
   };
@@ -339,7 +341,7 @@ export default function GlobalActionBar({
             </div>
           )}
 
-          {onEdit && (
+          {onEdit && canEdit && (
             <button
               type="button"
               onClick={onEdit}
@@ -351,7 +353,7 @@ export default function GlobalActionBar({
             </button>
           )}
 
-          {showDelete && onDelete && (
+          {showDelete && onDelete && canDelete && (
             <button
               type="button"
               onClick={onDelete}
@@ -363,7 +365,7 @@ export default function GlobalActionBar({
             </button>
           )}
 
-          {onSave && (
+          {onSave && canEdit && (
             <button
               type="button"
               onClick={onSave}
@@ -375,7 +377,7 @@ export default function GlobalActionBar({
             </button>
           )}
 
-          {onNew && (
+          {onNew && canCreate && (
             <button
               type="button"
               onClick={onNew}

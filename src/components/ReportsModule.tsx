@@ -15,11 +15,13 @@ interface ReportsModuleProps {
 export default function ReportsModule({ language = "ar" }: ReportsModuleProps) {
   const isAr = language === "ar";
   const { 
+    accounts, journalEntries, salesInvoices, purchaseOrders,
     roastingJobs, grindingJobs, roasteryExpenses, grindingExpenses,
     getTrialBalance, getIncomeStatement, getBalanceSheet, runMasterCertification, runDataIntegrityAudit
   } = useAppState();
 
-  const [activeReport, setActiveReport] = useState<"unified" | "trial_balance" | "balance_sheet" | "roastery" | "grinding" | "certification">("unified");
+  const [activeReport, setActiveReport] = useState<"unified" | "trial_balance" | "balance_sheet" | "general_ledger" | "roastery" | "grinding" | "certification">("unified");
+  const [selectedGlAccount, setSelectedGlAccount] = useState<string>("all");
   const [certReport, setCertReport] = useState(() => runMasterCertification());
   const [integrityReport, setIntegrityReport] = useState(() => runDataIntegrityAudit());
 
@@ -194,6 +196,16 @@ export default function ReportsModule({ language = "ar" }: ReportsModuleProps) {
           }`}
         >
           {isAr ? "الميزانية العمومية" : "Balance Sheet"}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveReport("general_ledger")}
+          className={`px-3.5 py-2 rounded-lg transition-all ${
+            activeReport === "general_ledger" ? "bg-white text-slate-900 shadow-xs border border-slate-200/60" : "text-slate-500 hover:text-slate-800"
+          }`}
+        >
+          {isAr ? "دفتر الأستاذ العام وإقرار VAT" : "General Ledger & VAT"}
         </button>
 
         <button
@@ -680,7 +692,7 @@ export default function ReportsModule({ language = "ar" }: ReportsModuleProps) {
               </div>
             </div>
 
-            {/* Terminal Log Output */}
+              {/* Terminal Log Output */}
             <div className="bg-slate-950 text-slate-200 p-5 rounded-2xl font-mono text-xs overflow-x-auto shadow-inner">
               <div className="text-slate-500 mb-2 border-b border-slate-800 pb-2 flex justify-between">
                 <span>CERTIFICATION RUNNER EXECUTION TRACE</span>
@@ -689,6 +701,105 @@ export default function ReportsModule({ language = "ar" }: ReportsModuleProps) {
               <pre className="whitespace-pre-wrap leading-relaxed text-[11px] text-emerald-400">
                 {certReport.formattedOutput}
               </pre>
+            </div>
+          </div>
+        )}
+
+        {/* 7. General Ledger & VAT Return Tab */}
+        {activeReport === "general_ledger" && (
+          <div className="space-y-6">
+            <div className="border-b border-slate-100 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-black text-slate-900">
+                  {isAr ? "كشف حساب دفتر الأستاذ العام وإقرار ضريبة القيمة المضافة (VAT 15%)" : "General Ledger Account Statement & VAT Return"}
+                </h2>
+                <p className="text-xs text-slate-400 mt-1">
+                  {isAr ? "تحليل تفصيلي لحركات الحسابات المرحلة وإجمالي ضريبة المخرجات والمدخلات." : "Detailed posted account transactions and VAT summary."}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-bold text-slate-600">{isAr ? "تصفية حسب الحساب:" : "Filter Account:"}</label>
+                <select
+                  value={selectedGlAccount}
+                  onChange={(e) => setSelectedGlAccount(e.target.value)}
+                  className="p-2 rounded-xl border border-slate-200 text-xs font-bold bg-slate-50"
+                >
+                  <option value="all">{isAr ? "جميع الحسابات (كامل الأستاذ العام)" : "All Accounts"}</option>
+                  {accounts.map((acc) => (
+                    <option key={acc.id} value={acc.id}>
+                      {acc.code} - {isAr ? acc.nameAr : acc.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* VAT Summary Cards */}
+            {(() => {
+              const outputVat = salesInvoices.reduce((s, inv) => s + (inv.tax || 0), 0);
+              const inputVat = purchaseOrders.filter(p => p.status === "Received").reduce((s, po) => s + po.totalAmount * 0.15, 0);
+              const vatLedgerBalance = accounts.find(a => a.id === "acc-2100")?.balance || 0;
+              return (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                  <div className="p-4 rounded-xl bg-teal-50/70 border border-teal-200">
+                    <span className="text-[10px] font-bold text-teal-800 block">{isAr ? "ضريبة المخرجات (المبيعات - 15%)" : "Output VAT (Sales)"}</span>
+                    <span className="text-lg font-black font-mono text-teal-900 mt-1 block">SAR {outputVat.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className="p-4 rounded-xl bg-amber-50/70 border border-amber-200">
+                    <span className="text-[10px] font-bold text-amber-800 block">{isAr ? "ضريبة المدخلات التقديرية (المشتريات المستلمة)" : "Input VAT (Purchases)"}</span>
+                    <span className="text-lg font-black font-mono text-amber-900 mt-1 block">SAR {inputVat.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className="p-4 rounded-xl bg-slate-100 border border-slate-250">
+                    <span className="text-[10px] font-bold text-slate-600 block">{isAr ? "رصيد حساب ضريبة القيمة المضافة المستحقة (2100)" : "GL VAT Payable Balance (2100)"}</span>
+                    <span className="text-lg font-black font-mono text-slate-900 mt-1 block">SAR {vatLedgerBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* General Ledger Movements Table */}
+            <div className="overflow-x-auto rounded-xl border border-slate-200">
+              <table className="w-full text-xs text-right">
+                <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+                  <tr>
+                    <th className="p-3">{isAr ? "رقم القيد" : "Voucher #"}</th>
+                    <th className="p-3">{isAr ? "التاريخ" : "Date"}</th>
+                    <th className="p-3">{isAr ? "المرجع" : "Reference"}</th>
+                    <th className="p-3">{isAr ? "الحساب" : "Account"}</th>
+                    <th className="p-3">{isAr ? "البيان" : "Description"}</th>
+                    <th className="p-3">{isAr ? "مدين (Debit)" : "Debit"}</th>
+                    <th className="p-3">{isAr ? "دائن (Credit)" : "Credit"}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {journalEntries
+                    .filter(je => (je.posted || je.workflowStatus === "Posted") && je.workflowStatus !== "Cancelled")
+                    .flatMap(je =>
+                      je.items
+                        .filter(it => selectedGlAccount === "all" || it.accountId === selectedGlAccount)
+                        .map((it, idx) => {
+                          const accObj = accounts.find(a => a.id === it.accountId);
+                          return (
+                            <tr key={`${je.id}-${idx}`} className="hover:bg-slate-50">
+                              <td className="p-3 font-mono font-bold text-teal-800">{je.id}</td>
+                              <td className="p-3 font-mono text-slate-500">{je.date}</td>
+                              <td className="p-3 font-mono text-slate-600">{je.reference}</td>
+                              <td className="p-3 font-bold text-slate-800">
+                                {accObj ? `${accObj.code} - ${isAr ? accObj.nameAr : accObj.name}` : it.accountName}
+                              </td>
+                              <td className="p-3 text-slate-600">{it.notes || je.notes}</td>
+                              <td className="p-3 font-mono font-bold text-emerald-700">
+                                {it.debit > 0 ? `SAR ${it.debit.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : "-"}
+                              </td>
+                              <td className="p-3 font-mono font-bold text-indigo-700">
+                                {it.credit > 0 ? `SAR ${it.credit.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : "-"}
+                              </td>
+                            </tr>
+                          );
+                        })
+                    )}
+                </tbody>
+              </table>
             </div>
           </div>
         )}

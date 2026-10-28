@@ -446,15 +446,26 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return saved ? JSON.parse(saved) : [];
   });
 
+  const defaultFiscalPeriods: FiscalPeriod[] = [
+    { id: "FP-2026-Q1", name: "الربع الأول 2026 (Q1)", code: "2026-Q1", fiscalYear: "2026", startDate: "2026-01-01", endDate: "2026-03-31", status: "OPEN", isClosed: false },
+    { id: "FP-2026-Q2", name: "الربع الثاني 2026 (Q2)", code: "2026-Q2", fiscalYear: "2026", startDate: "2026-04-01", endDate: "2026-06-30", status: "OPEN", isClosed: false },
+    { id: "FP-2026-Q3", name: "الربع الثالث 2026 (Q3)", code: "2026-Q3", fiscalYear: "2026", startDate: "2026-07-01", endDate: "2026-09-30", status: "OPEN", isClosed: false },
+    { id: "FP-2026-Q4", name: "الربع الرابع 2026 (Q4)", code: "2026-Q4", fiscalYear: "2026", startDate: "2026-10-01", endDate: "2026-12-31", status: "OPEN", isClosed: false }
+  ];
+
   const [fiscalPeriods, setFiscalPeriods] = useState<FiscalPeriod[]>(() => {
     const saved = localStorage.getItem("novaro_fiscal_periods");
-    if (saved) return JSON.parse(saved);
-    return [
-      { id: "FP-2026-Q1", code: "2026-Q1", fiscalYear: "2026", startDate: "2026-01-01", endDate: "2026-03-31", isClosed: false },
-      { id: "FP-2026-Q2", code: "2026-Q2", fiscalYear: "2026", startDate: "2026-04-01", endDate: "2026-06-30", isClosed: false },
-      { id: "FP-2026-Q3", code: "2026-Q3", fiscalYear: "2026", startDate: "2026-07-01", endDate: "2026-09-30", isClosed: false },
-      { id: "FP-2026-Q4", code: "2026-Q4", fiscalYear: "2026", startDate: "2026-10-01", endDate: "2026-12-31", isClosed: false }
-    ];
+    if (saved) {
+      const parsed: FiscalPeriod[] = JSON.parse(saved);
+      return parsed.map((fp, idx) => ({
+        ...defaultFiscalPeriods[idx],
+        ...fp,
+        name: fp.name || fp.code || `Period ${idx + 1}`,
+        status: fp.isClosed || fp.status === "CLOSED" || fp.status === "LOCKED" || fp.status === "Closed" || fp.status === "Locked" ? "CLOSED" : "OPEN",
+        isClosed: Boolean(fp.isClosed || fp.status === "CLOSED" || fp.status === "LOCKED" || fp.status === "Closed" || fp.status === "Locked")
+      }));
+    }
+    return defaultFiscalPeriods;
   });
 
   const [supplierMovements, setSupplierMovements] = useState<DomainSupplierMovement[]>(() => {
@@ -728,9 +739,16 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return { success: true };
   };
 
-  // Reverse Journal Entry (Enforced by AccountingEngine)
+  // Reverse Journal Entry (Enforced by AccountingEngine & FiscalPeriod Lock)
   const reverseJournalEntry = (entryId: string, reason: string) => {
-    const reversalResult = AccountingEngine.reverseEntry(entryId, journalEntries, reason);
+    const reversalResult = AccountingEngine.reverseEntry(
+      entryId,
+      journalEntries,
+      reason,
+      undefined,
+      currentUser.username,
+      fiscalPeriods
+    );
     if (!reversalResult.success || !reversalResult.reversalEntry) {
       return { success: false, error: reversalResult.error || "Journal entry reversal failed." };
     }
@@ -846,48 +864,39 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const jeLineItems: any[] = [];
 
     incomeAccounts.forEach(acc => {
-      if (acc.balance !== 0) {
+      if (Math.abs(acc.balance) > 0.001) {
         jeLineItems.push({
           id: `jei-${Math.random()}`,
           accountId: acc.id,
           accountName: acc.name,
-          debit: acc.balance,
-          credit: 0,
+          debit: acc.balance > 0 ? acc.balance : 0,
+          credit: acc.balance < 0 ? Math.abs(acc.balance) : 0,
           notes: "إغلاق أرصدة الإيرادات السنوية"
         });
       }
     });
 
     expenseAccounts.forEach(acc => {
-      if (acc.balance !== 0) {
+      if (Math.abs(acc.balance) > 0.001) {
         jeLineItems.push({
           id: `jei-${Math.random()}`,
           accountId: acc.id,
           accountName: acc.name,
-          debit: 0,
-          credit: acc.balance,
+          debit: acc.balance < 0 ? Math.abs(acc.balance) : 0,
+          credit: acc.balance > 0 ? acc.balance : 0,
           notes: "إغلاق أرصدة المصاريف السنوية"
         });
       }
     });
 
-    if (netSurplus > 0) {
+    if (Math.abs(netSurplus) > 0.001) {
       jeLineItems.push({
         id: `jei-earnings`,
         accountId: "acc-3100",
         accountName: "Retained Earnings",
-        debit: 0,
-        credit: netSurplus,
-        notes: "قيد ترحيل الأرباح السنوية المحققة للمركز المالي"
-      });
-    } else if (netSurplus < 0) {
-      jeLineItems.push({
-        id: `jei-earnings`,
-        accountId: "acc-3100",
-        accountName: "Retained Earnings",
-        debit: Math.abs(netSurplus),
-        credit: 0,
-        notes: "قيد ترحيل الخسائر السنوية المحققة للمركز المالي"
+        debit: netSurplus < 0 ? Math.abs(netSurplus) : 0,
+        credit: netSurplus > 0 ? netSurplus : 0,
+        notes: netSurplus > 0 ? "قيد ترحيل الأرباح السنوية المحققة للمركز المالي" : "قيد ترحيل الخسائر السنوية المحققة للمركز المالي"
       });
     }
 
@@ -1931,6 +1940,13 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         return { success: false, error: "Posted transactions are locked and read-only. Only reverse transactions allowed." };
       }
 
+      if (status === "Posted") {
+        const validation = AccountingEngine.validateEntry(entry, fiscalPeriods);
+        if (!validation.valid) {
+          return { success: false, error: validation.errors.join(" | ") };
+        }
+      }
+
       setJournalEntries(prev => prev.map(j => {
         if (j.id === docId) {
           return { ...j, workflowStatus: status, posted: status === "Posted" };
@@ -2081,45 +2097,84 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   // RBAC Access controls
+  const allEnterprisePages = [
+    "overview", "accounting", "customers", "customer_ledger", "suppliers", "purchases", "sales",
+    "wholesale_sales", "daily_sales", "inventory", "production", "roastery", "grinding", "pos",
+    "reports", "cashbox", "zatca",
+    "sales_quotations", "sales_orders", "delivery_notes", "sales_returns", "credit_notes", "customer_aging",
+    "purchase_requests", "rfq_comparison", "goods_receipt", "purchase_returns", "debit_notes", "supplier_aging", "landed_cost",
+    "stock_transfers", "stock_adjustments", "stock_count", "batch_traceability", "reorder_alerts",
+    "treasury_vouchers", "bank_accounts", "bank_reconciliation", "cheques_notes",
+    "fixed_assets", "depreciation", "cost_centers", "budgets",
+    "hr_employees", "hr_attendance", "hr_leaves", "hr_advances", "hr_payroll", "hr_eosb",
+    "crm_leads", "crm_opportunities", "crm_contracts", "crm_loyalty",
+    "admin_companies", "admin_branches", "admin_fiscal_years", "admin_fiscal_periods",
+    "admin_users", "admin_roles", "admin_numbering", "admin_audit_log", "admin_backup", "admin_sync_status"
+  ];
+
   const permissionsByRole: Record<UserRole, { pages: string[]; actions: string[] }> = {
     Admin: {
-      pages: ["overview", "accounting", "customers", "suppliers", "purchases", "sales", "inventory", "production", "pos", "reports", "cashbox", "zatca"],
-      actions: ["create", "edit", "approve", "post", "cancel", "delete", "configure"]
+      pages: allEnterprisePages,
+      actions: ["create", "edit", "approve", "post", "cancel", "delete", "configure", "view"]
     },
     Owner: {
-      pages: ["overview", "accounting", "customers", "suppliers", "purchases", "sales", "inventory", "production", "pos", "reports", "cashbox", "zatca"],
-      actions: ["create", "edit", "approve", "post", "cancel", "configure"]
+      pages: allEnterprisePages,
+      actions: ["create", "edit", "approve", "post", "cancel", "configure", "view"]
     },
     Accountant: {
-      pages: ["overview", "accounting", "customers", "suppliers", "purchases", "sales", "reports", "cashbox", "zatca"],
-      actions: ["create", "edit", "post", "cancel"]
+      pages: [
+        "overview", "accounting", "customers", "customer_ledger", "suppliers", "purchases", "sales",
+        "wholesale_sales", "daily_sales", "reports", "cashbox", "zatca",
+        "sales_returns", "credit_notes", "customer_aging", "purchase_returns", "debit_notes", "supplier_aging", "landed_cost",
+        "treasury_vouchers", "bank_accounts", "bank_reconciliation", "cheques_notes",
+        "fixed_assets", "depreciation", "cost_centers", "budgets", "hr_payroll", "hr_eosb", "admin_fiscal_periods", "admin_audit_log"
+      ],
+      actions: ["create", "edit", "post", "cancel", "view"]
     },
     "Warehouse Manager": {
-      pages: ["overview", "inventory", "suppliers", "purchases"],
-      actions: ["create", "edit", "transfer", "receive"]
+      pages: [
+        "overview", "inventory", "suppliers", "purchases",
+        "purchase_requests", "goods_receipt", "purchase_returns",
+        "stock_transfers", "stock_adjustments", "stock_count", "batch_traceability", "reorder_alerts"
+      ],
+      actions: ["create", "edit", "transfer", "receive", "view"]
     },
     "Production Manager": {
-      pages: ["overview", "production", "inventory"],
-      actions: ["create", "edit", "roast", "grind", "package"]
+      pages: [
+        "overview", "production", "roastery", "grinding", "inventory",
+        "stock_transfers", "batch_traceability", "reorder_alerts"
+      ],
+      actions: ["create", "edit", "roast", "grind", "package", "view"]
     },
     Cashier: {
-      pages: ["pos", "customers", "cashbox"],
-      actions: ["create", "sell", "checkout"]
+      pages: ["pos", "daily_sales", "customers", "cashbox", "treasury_vouchers"],
+      actions: ["create", "sell", "checkout", "view"]
     },
     "POS Operator": {
-      pages: ["pos", "customers", "cashbox"],
-      actions: ["create", "sell", "checkout"]
+      pages: ["pos", "daily_sales", "customers", "cashbox"],
+      actions: ["create", "sell", "checkout", "view"]
     },
     Sales: {
-      pages: ["sales", "customers"],
-      actions: ["create", "sell"]
+      pages: [
+        "overview", "sales", "wholesale_sales", "daily_sales", "customers", "customer_ledger",
+        "sales_quotations", "sales_orders", "delivery_notes", "sales_returns", "credit_notes", "customer_aging",
+        "crm_leads", "crm_opportunities", "crm_contracts", "crm_loyalty"
+      ],
+      actions: ["create", "edit", "sell", "view"]
     },
     Purchasing: {
-      pages: ["purchases", "suppliers"],
-      actions: ["create", "buy"]
+      pages: [
+        "overview", "purchases", "suppliers",
+        "purchase_requests", "rfq_comparison", "goods_receipt", "purchase_returns", "debit_notes", "supplier_aging", "landed_cost"
+      ],
+      actions: ["create", "edit", "buy", "receive", "view"]
     },
     Auditor: {
-      pages: ["overview", "accounting", "reports", "zatca"],
+      pages: [
+        "overview", "accounting", "reports", "zatca", "customer_ledger", "customer_aging", "supplier_aging",
+        "bank_reconciliation", "fixed_assets", "depreciation", "cost_centers", "budgets",
+        "admin_fiscal_periods", "admin_audit_log", "admin_sync_status"
+      ],
       actions: ["view"]
     },
     Viewer: {
@@ -2132,7 +2187,11 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (currentUser.role === "Admin" || currentUser.role === "Owner") return true;
     const rolePerms = permissionsByRole[currentUser.role];
     if (!rolePerms) return false;
-    
+
+    if (page && !rolePerms.pages.includes(page)) {
+      return false;
+    }
+
     if (action) {
       return rolePerms.actions.includes(action) || rolePerms.actions.includes("all");
     }
@@ -2239,12 +2298,7 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       sourceDocumentId: "OB-2026"
     })));
     setStockMovements([]);
-    setFiscalPeriods([
-      { id: "FP-2026-Q1", code: "2026-Q1", fiscalYear: "2026", startDate: "2026-01-01", endDate: "2026-03-31", isClosed: false },
-      { id: "FP-2026-Q2", code: "2026-Q2", fiscalYear: "2026", startDate: "2026-04-01", endDate: "2026-06-30", isClosed: false },
-      { id: "FP-2026-Q3", code: "2026-Q3", fiscalYear: "2026", startDate: "2026-07-01", endDate: "2026-09-30", isClosed: false },
-      { id: "FP-2026-Q4", code: "2026-Q4", fiscalYear: "2026", startDate: "2026-10-01", endDate: "2026-12-31", isClosed: false }
-    ]);
+    setFiscalPeriods(defaultFiscalPeriods);
     setSupplierMovements([]);
 
     addAuditLog("Factory Reset", "Restored ERP database schemas to pristine initial seeds.");
