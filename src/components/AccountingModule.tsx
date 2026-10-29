@@ -38,7 +38,7 @@ export default function AccountingModule({ language = "ar" }: AccountingModulePr
   const [jeNotes, setJeNotes] = useState<string>("");
   const [jeCurrency, setJeCurrency] = useState<Currency>(Currency.SAR);
   const [jeExchangeRate, setJeExchangeRate] = useState<number>(1);
-  const [jeWorkflowStatus, setJeWorkflowStatus] = useState<DocumentWorkflowStatus>("Draft");
+  const [jeWorkflowStatus, setJeWorkflowStatus] = useState<DocumentWorkflowStatus>("Posted");
   const [jeItems, setJeItems] = useState<Omit<JournalEntryItem, "id">[]>([
     { accountId: "", accountName: "", debit: 0, credit: 0, notes: "" },
     { accountId: "", accountName: "", debit: 0, credit: 0, notes: "" }
@@ -156,14 +156,26 @@ export default function AccountingModule({ language = "ar" }: AccountingModulePr
       return;
     }
 
-    // Convert entries to base currency (SAR) if not already
+    // Convert entries to base currency (SAR) with penny-rounding balance guarantee
     const baseItems = jeItems.map(item => ({
       ...item,
       id: `jei-${Math.floor(100000 + Math.random() * 900000)}`,
       debit: parseFloat((item.debit * jeExchangeRate).toFixed(2)),
       credit: parseFloat((item.credit * jeExchangeRate).toFixed(2)),
-      notes: `${item.notes || ""} [Orig: ${jeCurrency} ${item.debit > 0 ? item.debit : item.credit}]`
+      notes: jeCurrency === Currency.SAR
+        ? (item.notes || "")
+        : `${item.notes || ""} [Orig: ${jeCurrency} ${item.debit > 0 ? item.debit : item.credit} @ ${jeExchangeRate}]`
     }));
+
+    const convDebits = baseItems.reduce((s, i) => s + i.debit, 0);
+    const convCredits = baseItems.reduce((s, i) => s + i.credit, 0);
+    const pennyDiff = parseFloat((convDebits - convCredits).toFixed(2));
+    if (Math.abs(pennyDiff) > 0 && Math.abs(pennyDiff) <= 0.05) {
+      const creditIdx = baseItems.findIndex(i => i.credit > 0);
+      if (creditIdx !== -1) {
+        baseItems[creditIdx].credit = parseFloat((baseItems[creditIdx].credit + pennyDiff).toFixed(2));
+      }
+    }
 
     const result = postJournalEntry({
       date: jeDate,
@@ -713,18 +725,98 @@ export default function AccountingModule({ language = "ar" }: AccountingModulePr
           </div>
 
           <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-4 h-fit text-xs text-right">
-            <h3 className="font-extrabold text-slate-900 text-sm">{isAr ? "قواعد الرقابة والتحكم" : "Assurance Rules"}</h3>
-            <p className="text-slate-600 leading-relaxed font-medium">
-              {isAr 
-                ? "يتم ترحيل جميع حركات المستودعات والبيع في نقاط البيع والتحميص بشكل فوري وتلقائي إلى دفتر الأستاذ دون معالجات يدوية."
-                : "Real-time automated transaction posting."}
-            </p>
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <span className="text-[10px] font-mono font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded">GL Running Balance</span>
+              <h3 className="font-extrabold text-slate-900 text-sm">{isAr ? "كشف حساب تفصيلي بالأستاذ العام" : "General Ledger Statement"}</h3>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-slate-500 block">{isAr ? "اختر الحساب لعرض حركاته ورصيده التراكمي" : "Select Account"}</label>
+              <select
+                value={selectedLedgerAccountId || accounts[0]?.id || ""}
+                onChange={(e) => setSelectedLedgerAccountId(e.target.value)}
+                className="w-full p-2.5 rounded-lg border border-slate-200 bg-slate-50 font-bold text-xs text-right"
+              >
+                {accounts.map(acc => (
+                  <option key={acc.id} value={acc.id}>
+                    {acc.code} - {isAr ? acc.nameAr : acc.name} (SAR {acc.balance.toLocaleString(undefined, { minimumFractionDigits: 2 })})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {(() => {
+              const targetAccId = selectedLedgerAccountId || accounts[0]?.id || "acc-1000";
+              const targetAcc = accounts.find(a => a.id === targetAccId);
+              const isDebitNormal = targetAcc?.type === AccountType.Asset || targetAcc?.type === AccountType.Expense;
+              const postedEntries = [...journalEntries]
+                .filter(je => (je.posted || je.workflowStatus === "Posted") && je.items.some(it => it.accountId === targetAccId))
+                .reverse();
+
+              let runningBal = 0;
+              const statementRows = postedEntries.map(je => {
+                const lines = je.items.filter(it => it.accountId === targetAccId);
+                const dr = lines.reduce((s, l) => s + l.debit, 0);
+                const cr = lines.reduce((s, l) => s + l.credit, 0);
+                runningBal += isDebitNormal ? (dr - cr) : (cr - dr);
+                return {
+                  id: je.id,
+                  date: je.date,
+                  reference: je.reference,
+                  notes: je.notes,
+                  debit: dr,
+                  credit: cr,
+                  balance: runningBal
+                };
+              });
+
+              return (
+                <div className="space-y-3">
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
+                    <span className="font-mono font-black text-teal-800 text-sm">
+                      SAR {(targetAcc?.balance ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </span>
+                    <div className="text-right">
+                      <span className="text-[11px] font-bold text-slate-800 block">{targetAcc ? (isAr ? targetAcc.nameAr : targetAcc.name) : ""}</span>
+                      <span className="text-[10px] text-slate-400">{statementRows.length} {isAr ? "حركة مرحلة بالأستاذ العام" : "Posted GL Movements"}</span>
+                    </div>
+                  </div>
+
+                  <div className="max-h-72 overflow-y-auto border border-slate-150 rounded-xl divide-y divide-slate-100">
+                    {statementRows.length === 0 ? (
+                      <div className="p-4 text-center text-slate-400 text-[11px]">
+                        {isAr ? "لا توجد حركات مرحلة لهذا الحساب حالياً" : "No posted movements for this account"}
+                      </div>
+                    ) : (
+                      statementRows.slice().reverse().map((row, i) => (
+                        <div key={`${row.id}-${i}`} className="p-2.5 hover:bg-slate-50 transition space-y-1">
+                          <div className="flex items-center justify-between text-[10px]">
+                            <span className="font-mono text-slate-400">{row.date}</span>
+                            <span className="font-mono font-bold text-slate-700">{row.id} ({row.reference})</span>
+                          </div>
+                          <div className="text-[11px] text-slate-600 truncate">{row.notes}</div>
+                          <div className="flex items-center justify-between text-[10px] font-mono pt-1 border-t border-slate-50">
+                            <span className="font-black text-slate-800">
+                              {isAr ? "الرصيد:" : "Bal:"} {row.balance.toFixed(2)}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              {row.debit > 0 && <span className="text-emerald-700 font-bold">{isAr ? "مدين:" : "Dr:"} {row.debit.toFixed(2)}</span>}
+                              {row.credit > 0 && <span className="text-rose-700 font-bold">{isAr ? "دائن:" : "Cr:"} {row.credit.toFixed(2)}</span>}
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
 
             <div className="space-y-3 pt-2">
               <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg">
                 <span className="text-[10px] font-bold text-teal-800 uppercase tracking-widest block font-sans">{isAr ? "توازن الأرصدة المزدوجة" : "Double-Entry Balance"}</span>
                 <p className="text-slate-600 mt-1 leading-normal">
-                  {isAr ? "المدين = الدائن دائماً. لا يسمح محرك القيد بحفظ أي سند لا تتطابق فيه الموازين الحسابية." : "Mathematical lock ensures perfect GL matching."}
+                  {isAr ? "المدين = الدائن دائماً. لا يسمح محرك القيد بحفظ أي سند لا تتطابق فيه الموازين الحسابية أو يقع في فترة مالية مقفلة." : "Mathematical lock ensures perfect GL matching."}
                 </p>
               </div>
             </div>
@@ -745,7 +837,7 @@ export default function AccountingModule({ language = "ar" }: AccountingModulePr
 
           <form onSubmit={handlePostJe} className="space-y-6 text-xs">
             {/* Header fields */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-5 text-right">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 text-right">
               <div className="space-y-1">
                 <label className="text-[10px] uppercase font-bold text-slate-500 block">{isAr ? "تاريخ الترحيل المالي" : "Posting Date"}</label>
                 <input
@@ -755,6 +847,17 @@ export default function AccountingModule({ language = "ar" }: AccountingModulePr
                   className="w-full text-xs p-2.5 rounded-lg border border-slate-200 text-right"
                   required
                 />
+                {(() => {
+                  const matchedPeriod = fiscalPeriods.find(fp => jeDate >= fp.startDate && jeDate <= fp.endDate);
+                  const isLocked = matchedPeriod && (matchedPeriod.isClosed || matchedPeriod.status === "CLOSED" || matchedPeriod.status === "LOCKED");
+                  return matchedPeriod ? (
+                    <span className={`text-[10px] font-bold block ${isLocked ? "text-rose-600" : "text-emerald-700"}`}>
+                      {isLocked
+                        ? (isAr ? `⚠️ الفترة (${matchedPeriod.code}) مقفلة` : `Period ${matchedPeriod.code} Locked`)
+                        : (isAr ? `✓ الفترة (${matchedPeriod.code}) مفتوحة للترحيل` : `Period ${matchedPeriod.code} Open`)}
+                    </span>
+                  ) : null;
+                })()}
               </div>
 
               <div className="space-y-1">
@@ -766,6 +869,18 @@ export default function AccountingModule({ language = "ar" }: AccountingModulePr
                   onChange={(e) => setJeReference(e.target.value)}
                   className="w-full text-xs p-2.5 rounded-lg border border-slate-200 text-center font-mono"
                 />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] uppercase font-bold text-slate-500 block">{isAr ? "حالة اعتماد السند" : "Posting Mode"}</label>
+                <select
+                  value={jeWorkflowStatus}
+                  onChange={(e) => setJeWorkflowStatus(e.target.value as DocumentWorkflowStatus)}
+                  className="w-full text-xs p-2.5 rounded-lg border border-slate-200 text-right font-bold bg-white"
+                >
+                  <option value="Posted">{isAr ? "ترحيل فوري للأستاذ العام (Posted)" : "Immediate GL Post (Posted)"}</option>
+                  <option value="Draft">{isAr ? "حفظ كمسودة للمراجعة (Draft)" : "Save as Draft (Draft)"}</option>
+                </select>
               </div>
 
               <div className="space-y-1">
@@ -782,7 +897,7 @@ export default function AccountingModule({ language = "ar" }: AccountingModulePr
               </div>
 
               <div className="space-y-1">
-                <label className="text-[10px] uppercase font-bold text-slate-500 block">{isAr ? "سعر الصرف مقابل الريال السعودي" : "Exchange Rate to SAR"}</label>
+                <label className="text-[10px] uppercase font-bold text-slate-500 block">{isAr ? "سعر الصرف مقابل الريال" : "Exchange Rate to SAR"}</label>
                 <input
                   type="number"
                   step="0.0001"

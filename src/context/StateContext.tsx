@@ -51,6 +51,18 @@ export interface Toast {
   undoLabelEn?: string;
 }
 
+export interface NumberingSequence {
+  id: string;
+  moduleAr: string;
+  moduleEn: string;
+  prefix: string;
+  separator: string;
+  includeYear: boolean;
+  padding: number;
+  nextNumber: number;
+  sample: string;
+}
+
 interface StateContextType {
   accounts: Account[];
   warehouses: Warehouse[];
@@ -123,6 +135,7 @@ interface StateContextType {
   postRecurringEntry: (id: string) => { success: boolean; error?: string };
   fiscalYearClosing: (closingNotes: string) => { success: boolean; error?: string };
   toggleFiscalPeriodLock: (periodId: string) => void;
+  addFiscalPeriod: (fp: Omit<FiscalPeriod, "id">) => void;
 
   // Document Workflows Status Orchestrator
   updateDocumentWorkflowStatus: (
@@ -136,6 +149,7 @@ interface StateContextType {
   addInventoryAdjustment: (adj: Omit<InventoryAdjustment, "id" | "workflowStatus">) => { success: boolean; error?: string };
   addStockTransfer: (trans: Omit<StockTransfer, "id" | "workflowStatus">) => { success: boolean; error?: string };
   addWarehouse: (wh: Omit<Warehouse, "id">) => void;
+  updateWarehouse: (id: string, wh: Partial<Warehouse>) => void;
 
   // Production and FIFO Costing calculations
   addRecipe: (recipe: Omit<Recipe, "id">) => void;
@@ -185,6 +199,7 @@ interface StateContextType {
   // Audits and Backups
   addAuditLog: (action: string, details: string, oldValue?: string, newValue?: string, reason?: string) => void;
   createBackup: () => void;
+  downloadBackup: (backupId?: string) => void;
   resetToDefault: () => void;
   
   // Toast notifications
@@ -219,9 +234,15 @@ interface StateContextType {
   deleteItem: (id: string) => void;
   deleteAccount: (id: string) => void;
 
-  // RBAC Access Control
+  // Governance: Users, RBAC & Document Numbering
+  addUser: (u: Omit<User, "id">) => void;
+  updateUser: (id: string, u: Partial<User>) => void;
+  deleteUser: (id: string) => void;
   permissionsByRole: Record<UserRole, { pages: string[]; actions: string[] }>;
+  updateRolePermissions: (role: UserRole, pages: string[], actions: string[]) => void;
   checkUserPermission: (page: string, action: string) => boolean;
+  numberingSequences: NumberingSequence[];
+  updateNumberingSequence: (id: string, patch: Partial<NumberingSequence>) => void;
 }
 
 const StateContext = createContext<StateContextType | undefined>(undefined);
@@ -851,6 +872,17 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
       return fp;
     }));
+  };
+
+  // Add New Fiscal Period
+  const addFiscalPeriod = (fp: Omit<FiscalPeriod, "id">) => {
+    const id = `fp-${fp.code.toLowerCase().replace(/[^a-z0-9]/g, "-")}-${Date.now().toString().slice(-3)}`;
+    const newPeriod: FiscalPeriod = {
+      ...fp,
+      id
+    };
+    setFiscalPeriods(prev => [...prev, newPeriod]);
+    addAuditLog("Add Fiscal Period", `Created new fiscal period ${fp.name} (${fp.startDate} -> ${fp.endDate})`);
   };
 
   // Fiscal Year Closing
@@ -1966,7 +1998,16 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     addAuditLog("Warehouse Added", `Created Warehouse ${wh.nameAr} (${wh.location})`);
   };
 
+  const updateWarehouse = (id: string, wh: Partial<Warehouse>) => {
+    setWarehouses(prev => prev.map(w => w.id === id ? { ...w, ...wh } : w));
+    addAuditLog("Warehouse Updated", `Updated Warehouse ${id} (${wh.nameAr || wh.name || ""})`);
+  };
+
   const addInventoryAdjustment = (adj: Omit<InventoryAdjustment, "id" | "workflowStatus">) => {
+    const periodCheck = assertPeriodAllowsPosting(adj.date, fiscalPeriods);
+    if (!periodCheck.allowed) {
+      return { success: false, error: periodCheck.reason || "الفترة المالية مغلقة ولا يمكن إنشاء تسويات مخزنية فيها." };
+    }
     const id = `ADJ-${Math.floor(1000 + Math.random() * 9000)}`;
     const newAdj: InventoryAdjustment = {
       ...adj,
@@ -1980,6 +2021,10 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const addStockTransfer = (trans: Omit<StockTransfer, "id" | "workflowStatus">) => {
+    const periodCheck = assertPeriodAllowsPosting(trans.date, fiscalPeriods);
+    if (!periodCheck.allowed) {
+      return { success: false, error: periodCheck.reason || "الفترة المالية مغلقة ولا يمكن إنشاء مناقلات مخزنية فيها." };
+    }
     const id = `XFER-${Math.floor(1000 + Math.random() * 9000)}`;
     const newTrans: StockTransfer = {
       ...trans,
@@ -2004,14 +2049,18 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (docType === "journalEntry") {
       const entry = journalEntries.find(j => j.id === docId);
       if (!entry) return { success: false, error: "Journal Entry not found" };
-      oldStatus = entry.workflowStatus || "Draft";
+      oldStatus = entry.workflowStatus || (entry.posted ? "Posted" : "Draft");
       
-      if (oldStatus === "Posted" && currentUser.role !== "Admin" && currentUser.role !== "Owner") {
-        return { success: false, error: "Posted transactions are locked and read-only. Only reverse transactions allowed." };
+      // Strict Double-Entry Immutability: Posted journal entries cannot be mutated back to Draft/Cancelled directly; must use reverseJournalEntry
+      if (oldStatus === "Posted" || entry.posted) {
+        return {
+          success: false,
+          error: "القيود المرحلة للأستاذ العام محمية وغير قابلة للتعديل المباشر؛ يجب استخدام قيد العكس المحاسبي (Reverse Entry)."
+        };
       }
 
       if (status === "Posted") {
-        const validation = AccountingEngine.validateEntry(entry, fiscalPeriods);
+        const validation = AccountingEngine.validateEntry({ ...entry, workflowStatus: "Posted" }, fiscalPeriods);
         if (!validation.valid) {
           return { success: false, error: validation.errors.join(" | ") };
         }
@@ -2032,6 +2081,13 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         return { success: false, error: "Posted documents are read-only." };
       }
 
+      if (status === "Posted" && oldStatus !== "Posted") {
+        const recResult = receivePurchaseOrder(docId);
+        if (!recResult.success) {
+          return recResult;
+        }
+      }
+
       setPurchaseOrders(prev => prev.map(p => {
         if (p.id === docId) {
           const nextStatus = status === "Posted" ? "Received" as const : p.status;
@@ -2039,10 +2095,6 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
         return p;
       }));
-
-      if (status === "Posted" && oldStatus !== "Posted") {
-        receivePurchaseOrder(docId);
-      }
     } else if (docType === "salesInvoice") {
       const inv = salesInvoices.find(s => s.id === docId);
       if (!inv) return { success: false, error: "Sales Invoice not found" };
@@ -2063,78 +2115,109 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (!adj) return { success: false, error: "Adjustment not found" };
       oldStatus = adj.workflowStatus;
 
+      if (status === "Posted" && oldStatus !== "Posted") {
+        const periodCheck = assertPeriodAllowsPosting(adj.date, fiscalPeriods);
+        if (!periodCheck.allowed) {
+          return { success: false, error: periodCheck.reason || "الفترة المالية مغلقة ولا يمكن ترحيل التسوية المخزنية." };
+        }
+
+        if (adj.type === "Addition") {
+          const batchNumber = `ADJ-${adj.id}-${new Date().toISOString().slice(2, 10).replace(/-/g, "")}`;
+          const recRes = InventoryEngine.receiveStock(
+            {
+              itemId: adj.itemId,
+              itemName: adj.itemName,
+              warehouseId: adj.warehouseId,
+              batchNumber,
+              quantity: adj.quantity,
+              unitCost: adj.costPerUnit,
+              date: adj.date,
+              referenceType: "INVENTORY_ADJUSTMENT",
+              referenceId: adj.id,
+              createdBy: currentUser.username || "system",
+              notes: adj.notes
+            },
+            batches,
+            costLayers,
+            stockMovements
+          );
+          if (!recRes.success || !recRes.data) {
+            return { success: false, error: recRes.error || "فشل في إضافة التسوية المخزنية." };
+          }
+
+          const amount = Math.round(adj.quantity * adj.costPerUnit * 100) / 100;
+          const glRes = postJournalEntry({
+            date: adj.date,
+            reference: adj.id,
+            notes: `قيد تسوية مخزنية بالزيادة (${adj.itemName}): ${adj.notes}`,
+            workflowStatus: "Posted",
+            currency: Currency.SAR,
+            exchangeRate: 1,
+            items: [
+              { id: `jei-adj-dr-${Date.now()}`, accountId: postingConfig.finishedGoodsInventoryAccountId, accountName: "Finished Product Stock", debit: amount, credit: 0 },
+              { id: `jei-adj-cr-${Date.now()}`, accountId: postingConfig.wholesaleRevenueAccountId, accountName: "Inventory Gain / Wholesale Revenue", debit: 0, credit: amount, notes: "Inventory adjustment gain" }
+            ]
+          });
+          if (!glRes.success) return glRes;
+
+          setBatches(recRes.data.batches);
+          setCostLayers(recRes.data.layers);
+          setStockMovements(recRes.data.movements);
+        } else {
+          const issRes = InventoryEngine.issueStock(
+            {
+              itemId: adj.itemId,
+              quantity: adj.quantity,
+              date: adj.date,
+              referenceType: "INVENTORY_ADJUSTMENT",
+              referenceId: adj.id,
+              createdBy: currentUser.username || "system",
+              notes: adj.notes
+            },
+            batches,
+            costLayers,
+            stockMovements,
+            adj.itemName
+          );
+          if (!issRes.success || !issRes.data) {
+            return { success: false, error: issRes.error || "الرصيد المخزني غير كافٍ لخصم التسوية." };
+          }
+
+          const totalValue = issRes.data.totalCOGS;
+          const glRes = postJournalEntry({
+            date: adj.date,
+            reference: adj.id,
+            notes: `قيد تسوية مخزنية بالعجز/التالف (${adj.itemName}): ${adj.notes}`,
+            workflowStatus: "Posted",
+            currency: Currency.SAR,
+            exchangeRate: 1,
+            items: [
+              { id: `jei-adj-dr-${Date.now()}`, accountId: postingConfig.cogsAccountId, accountName: "Cost of Goods Sold (COGS)", debit: totalValue, credit: 0, notes: "Inventory adjustment loss" },
+              { id: `jei-adj-cr-${Date.now()}`, accountId: postingConfig.finishedGoodsInventoryAccountId, accountName: "Finished Product Stock", debit: 0, credit: totalValue }
+            ]
+          });
+          if (!glRes.success) return glRes;
+
+          setBatches(issRes.data.batches);
+          setCostLayers(issRes.data.layers);
+          setStockMovements(issRes.data.movements);
+        }
+      }
+
       setInventoryAdjustments(prev => prev.map(a => {
         if (a.id === docId) return { ...a, workflowStatus: status };
         return a;
       }));
-
-      if (status === "Posted" && oldStatus !== "Posted") {
-        if (adj.type === "Addition") {
-          const newBatch: Batch = {
-            id: `bat-${Math.floor(100000 + Math.random() * 900000)}`,
-            batchNumber: `ADJ-${adj.id}-${new Date().toISOString().slice(2,10).replace(/-/g, "")}`,
-            itemId: adj.itemId,
-            itemName: adj.itemName,
-            manufactureDate: adj.date,
-            expiryDate: new Date(new Date(adj.date).setFullYear(new Date(adj.date).getFullYear() + 2)).toISOString().split('T')[0],
-            quantity: adj.quantity,
-            costPerUnit: adj.costPerUnit,
-            warehouseId: adj.warehouseId
-          };
-          setBatches(prev => [...prev, newBatch]);
-
-          const amount = adj.quantity * adj.costPerUnit;
-          postJournalEntry({
-            date: adj.date,
-            reference: adj.id,
-            notes: `Auto adjustment posting: ${adj.notes}`,
-            workflowStatus: "Posted",
-            currency: Currency.SAR,
-            exchangeRate: 1,
-            items: [
-              { id: `jei-${Math.random()}`, accountId: "acc-1310", accountName: "Finished Product Stock", debit: amount, credit: 0 },
-              { id: `jei-${Math.random()}`, accountId: "acc-4000", accountName: "Wholesale Revenue", debit: 0, credit: amount, notes: "Inventory adjustment gain" }
-            ]
-          });
-        } else {
-          let remaining = adj.quantity;
-          let totalValue = 0;
-          const updatedBatches = batches.map(b => {
-            if (b.itemId === adj.itemId && b.quantity > 0 && remaining > 0) {
-              const deduct = Math.min(b.quantity, remaining);
-              remaining -= deduct;
-              totalValue += deduct * b.costPerUnit;
-              return { ...b, quantity: parseFloat((b.quantity - deduct).toFixed(3)) };
-            }
-            return b;
-          });
-          setBatches(updatedBatches);
-
-          postJournalEntry({
-            date: adj.date,
-            reference: adj.id,
-            notes: `Auto adjustment posting (deduction): ${adj.notes}`,
-            workflowStatus: "Posted",
-            currency: Currency.SAR,
-            exchangeRate: 1,
-            items: [
-              { id: `jei-${Math.random()}`, accountId: "acc-5000", accountName: "Cost of Goods Sold (COGS)", debit: totalValue, credit: 0, notes: "Inventory adjustment loss" },
-              { id: `jei-${Math.random()}`, accountId: "acc-1310", accountName: "Finished Product Stock", debit: 0, credit: totalValue }
-            ]
-          });
-        }
-      }
     } else if (docType === "stockTransfer") {
       const trans = stockTransfers.find(t => t.id === docId);
       if (!trans) return { success: false, error: "Transfer not found" };
       oldStatus = trans.workflowStatus;
 
-      setStockTransfers(prev => prev.map(t => {
-        if (t.id === docId) return { ...t, workflowStatus: status };
-        return t;
-      }));
-
       if (status === "Posted" && oldStatus !== "Posted") {
+        const periodCheck = assertPeriodAllowsPosting(trans.date, fiscalPeriods);
+        if (!periodCheck.allowed) {
+          return { success: false, error: periodCheck.reason || "الفترة المالية مغلقة ولا يمكن ترحيل المناقلة المخزنية." };
+        }
         let remaining = trans.quantity;
         const newTargetBatches: Batch[] = [];
         const updatedBatches = batches.map(b => {
@@ -2158,6 +2241,11 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         });
         setBatches([...updatedBatches, ...newTargetBatches]);
       }
+
+      setStockTransfers(prev => prev.map(t => {
+        if (t.id === docId) return { ...t, workflowStatus: status };
+        return t;
+      }));
     }
 
     const logDetails = `Updated ${docType} ID ${docId} workflow status from ${oldStatus} to ${status}. Reason: ${reason || "N/A"}`;
@@ -2182,7 +2270,7 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     "admin_users", "admin_roles", "admin_numbering", "admin_audit_log", "admin_backup", "admin_sync_status"
   ];
 
-  const permissionsByRole: Record<UserRole, { pages: string[]; actions: string[] }> = {
+  const defaultPermissionsByRole: Record<UserRole, { pages: string[]; actions: string[] }> = {
     Admin: {
       pages: allEnterprisePages,
       actions: ["create", "edit", "approve", "post", "cancel", "delete", "configure", "view"]
@@ -2253,6 +2341,83 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
+  const [permissionsByRole, setPermissionsByRole] = useState<Record<UserRole, { pages: string[]; actions: string[] }>>(() => {
+    const saved = localStorage.getItem("novaro_permissions_by_role");
+    return saved ? JSON.parse(saved) : defaultPermissionsByRole;
+  });
+
+  useEffect(() => {
+    localStorage.setItem("novaro_permissions_by_role", JSON.stringify(permissionsByRole));
+  }, [permissionsByRole]);
+
+  const updateRolePermissions = (role: UserRole, pages: string[], actions: string[]) => {
+    setPermissionsByRole(prev => ({
+      ...prev,
+      [role]: { pages, actions }
+    }));
+    addAuditLog("RBAC Permissions Update", `Updated role permissions for ${role} (${pages.length} pages, ${actions.length} actions)`);
+  };
+
+  const defaultNumberingSequences: NumberingSequence[] = [
+    { id: "seq-je", moduleAr: "قيود اليومية والأستاذ العام", moduleEn: "Journal Entries", prefix: "JE", separator: "-", includeYear: true, padding: 4, nextNumber: 1025, sample: "JE-2026-1025" },
+    { id: "seq-inv", moduleAr: "فواتير المبيعات الضريبية", moduleEn: "Sales Invoices", prefix: "INV", separator: "-", includeYear: true, padding: 4, nextNumber: 2040, sample: "INV-2026-2040" },
+    { id: "seq-po", moduleAr: "أوامر الشراء والتوريد", moduleEn: "Purchase Orders", prefix: "PO", separator: "-", includeYear: true, padding: 4, nextNumber: 1015, sample: "PO-2026-1015" },
+    { id: "seq-cn", moduleAr: "إشعارات دائنة (مرتجعات مبيعات 381)", moduleEn: "Credit Notes (381)", prefix: "CN", separator: "-", includeYear: true, padding: 4, nextNumber: 1005, sample: "CN-2026-1005" },
+    { id: "seq-dn", moduleAr: "إشعارات مدينة (مرتجعات مشتريات 383)", moduleEn: "Debit Notes (383)", prefix: "DN-PUR", separator: "-", includeYear: true, padding: 4, nextNumber: 1005, sample: "DN-PUR-2026-1005" },
+    { id: "seq-rst", moduleAr: "أوامر تشغيل التحميص", moduleEn: "Roasting Jobs", prefix: "RST-JOB", separator: "-", includeYear: false, padding: 4, nextNumber: 4010, sample: "RST-JOB-4010" },
+    { id: "seq-grd", moduleAr: "أوامر تشغيل الطحن", moduleEn: "Grinding Jobs", prefix: "GRD-JOB", separator: "-", includeYear: false, padding: 4, nextNumber: 5010, sample: "GRD-JOB-5010" },
+    { id: "seq-pkg", moduleAr: "أوامر التغليف والتعبئة", moduleEn: "Packaging Jobs", prefix: "PKG-JOB", separator: "-", includeYear: false, padding: 4, nextNumber: 6010, sample: "PKG-JOB-6010" },
+    { id: "seq-adj", moduleAr: "تسويات الجرد المخزني", moduleEn: "Inventory Adjustments", prefix: "ADJ", separator: "-", includeYear: false, padding: 4, nextNumber: 3010, sample: "ADJ-3010" },
+    { id: "seq-xfer", moduleAr: "مناقلات المستودعات", moduleEn: "Stock Transfers", prefix: "XFER", separator: "-", includeYear: false, padding: 4, nextNumber: 7010, sample: "XFER-7010" }
+  ];
+
+  const [numberingSequences, setNumberingSequences] = useState<NumberingSequence[]>(() => {
+    const saved = localStorage.getItem("novaro_numbering_sequences");
+    return saved ? JSON.parse(saved) : defaultNumberingSequences;
+  });
+
+  useEffect(() => {
+    localStorage.setItem("novaro_numbering_sequences", JSON.stringify(numberingSequences));
+  }, [numberingSequences]);
+
+  const updateNumberingSequence = (id: string, patch: Partial<NumberingSequence>) => {
+    setNumberingSequences(prev => prev.map(seq => {
+      if (seq.id === id) {
+        const updated = { ...seq, ...patch };
+        const yearPart = updated.includeYear ? `${new Date().getFullYear()}${updated.separator}` : "";
+        const numPart = String(updated.nextNumber).padStart(updated.padding, "0");
+        updated.sample = `${updated.prefix}${updated.separator}${yearPart}${numPart}`;
+        return updated;
+      }
+      return seq;
+    }));
+    addAuditLog("Numbering Sequence Updated", `Updated document numbering sequence ${id}`);
+  };
+
+  const addUser = (u: Omit<User, "id">) => {
+    const newUser: User = {
+      ...u,
+      id: `usr-${Date.now().toString().slice(-4)}`
+    };
+    setUsers(prev => [...prev, newUser]);
+    addAuditLog("User Created", `Created user account ${u.username} with role ${u.role}`);
+  };
+
+  const updateUser = (id: string, u: Partial<User>) => {
+    setUsers(prev => prev.map(usr => usr.id === id ? { ...usr, ...u } : usr));
+    if (currentUser.id === id) {
+      setCurrentUser(prev => ({ ...prev, ...u }));
+    }
+    addAuditLog("User Updated", `Updated user ${id}`);
+  };
+
+  const deleteUser = (id: string) => {
+    if (currentUser.id === id) return;
+    const target = users.find(u => u.id === id);
+    setUsers(prev => prev.filter(u => u.id !== id));
+    addAuditLog("User Deleted", `Deleted user ${target?.username || id}`);
+  };
+
   const checkUserPermission = (page: string, action: string) => {
     if (currentUser.role === "Admin" || currentUser.role === "Owner") return true;
     const rolePerms = permissionsByRole[currentUser.role];
@@ -2270,52 +2435,72 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   // 10. Create SQL/JSON Database Backup File
+  const getFullBackupPayload = () => ({
+    timestamp: new Date().toISOString(),
+    accounts,
+    warehouses,
+    items,
+    recipes,
+    customers,
+    suppliers,
+    journalEntries,
+    batches,
+    costLayers,
+    stockMovements,
+    roastingJobs,
+    grindingJobs,
+    packagingJobs,
+    purchaseOrders,
+    salesInvoices,
+    posSessions,
+    bankTransactions,
+    users,
+    auditLogs,
+    companySettings,
+    exchangeRates,
+    inventoryAdjustments,
+    stockTransfers,
+    recurringEntries,
+    zatcaRecords,
+    salesQuotations,
+    salesOrders,
+    salesReturns,
+    purchaseRequests,
+    purchaseReturns,
+    fixedAssets,
+    employees,
+    payrollRuns,
+    fiscalPeriods,
+    numberingSequences
+  });
+
   const createBackup = () => {
-    const backupData = {
-      timestamp: new Date().toISOString(),
-      accounts,
-      warehouses,
-      items,
-      recipes,
-      customers,
-      suppliers,
-      journalEntries,
-      batches,
-      roastingJobs,
-      grindingJobs,
-      packagingJobs,
-      purchaseOrders,
-      salesInvoices,
-      posSessions,
-      bankTransactions,
-      users,
-      auditLogs,
-      companySettings,
-      exchangeRates,
-      inventoryAdjustments,
-      stockTransfers,
-      recurringEntries,
-      zatcaRecords,
-      salesQuotations,
-      salesOrders,
-      salesReturns,
-      purchaseRequests,
-      purchaseReturns,
-      fixedAssets,
-      employees,
-      payrollRuns
-    };
+    const backupData = getFullBackupPayload();
 
     const filename = `novaro_erp_backup_${new Date().toISOString().slice(0, 10).replace(/-/g, "_")}_${Math.floor(1000 + Math.random() * 9000)}.json`;
     const newBackup: Backup = {
       id: `bak-${Math.floor(100000 + Math.random() * 900000)}`,
       filename,
       createdAt: new Date().toLocaleString(),
-      size: `${(JSON.stringify(backupData).length / 1024 / 1024).toFixed(2)} MB`
+      size: `${Math.max(0.05, JSON.stringify(backupData).length / 1024 / 1024).toFixed(2)} MB`
     };
 
     setBackups(prev => [newBackup, ...prev]);
     addAuditLog("System Backup", `Generated complete relational JSON structure dump file: ${filename}`);
+  };
+
+  const downloadBackup = (backupId?: string) => {
+    const backupData = getFullBackupPayload();
+    const targetBackup = backupId ? backups.find(b => b.id === backupId) : undefined;
+    const filename = targetBackup?.filename || `novaro_erp_dump_${new Date().toISOString().slice(0, 10)}.json`;
+    const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+    addAuditLog("Download Backup", `Downloaded encrypted/JSON system backup ${filename}`);
   };
 
   // 11. Reset database to defaults
@@ -3001,13 +3186,13 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       // Double Entry
       postJournalEntry, reverseJournalEntry,
       addRecurringEntry, postRecurringEntry, fiscalYearClosing,
-      toggleFiscalPeriodLock,
+      toggleFiscalPeriodLock, addFiscalPeriod,
 
       // Document Workflows
       updateDocumentWorkflowStatus,
 
       // Warehouse Accounting
-      addInventoryAdjustment, addStockTransfer, addWarehouse,
+      addInventoryAdjustment, addStockTransfer, addWarehouse, updateWarehouse,
 
       // Production FIFO Costing
       addRecipe, deleteRecipe,
@@ -3026,7 +3211,7 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       addBankTransaction, addFixedAsset, runDepreciationCycle,
       addEmployee, processPayrollRun, addCrmLead, updateCrmLeadStage, addCostCenter,
 
-      addAuditLog, createBackup, resetToDefault,
+      addAuditLog, createBackup, downloadBackup, resetToDefault,
       toasts, addToast, removeToast,
       addCustomer, addSupplier, addItem, addAccount,
       updateCustomer, updateSupplier, updateItem, updateAccount,
@@ -3039,8 +3224,10 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       addCashboxTransaction, deleteCashboxTransaction,
       addCustomerMovement,
 
-      // RBAC Controls
-      permissionsByRole, checkUserPermission
+      // Governance: Users, RBAC Controls & Document Numbering
+      addUser, updateUser, deleteUser,
+      permissionsByRole, updateRolePermissions, checkUserPermission,
+      numberingSequences, updateNumberingSequence
     }}>
       {children}
     </StateContext.Provider>
