@@ -32,7 +32,7 @@ import {
   PostingAccountConfiguration, 
   defaultPostingAccountConfiguration 
 } from "../core/domain/accounting/PostingAccountConfiguration";
-import { FiscalPeriod } from "../core/domain/accounting/FiscalPeriod";
+import { FiscalPeriod, assertPeriodAllowsPosting } from "../core/domain/accounting/FiscalPeriod";
 import { CostLayer } from "../core/domain/inventory/CostLayer";
 import { DomainStockMovement } from "../core/domain/inventory/StockMovement";
 import { DomainCustomerMovement } from "../core/domain/commerce/CustomerLedger";
@@ -104,12 +104,17 @@ interface StateContextType {
   crmLeads: CrmLead[];
   costCenters: CostCenter[];
 
-  // Ledger-derived reports & Auditing
+  // Ledger-derived reports, Auditing & PGlite Sync
   getTrialBalance: (asOfDate?: string) => TrialBalanceResult;
   getIncomeStatement: (startDate?: string, endDate?: string) => IncomeStatementResult;
   getBalanceSheet: (asOfDate?: string) => BalanceSheetResult;
   runDataIntegrityAudit: () => DataIntegrityReport;
   runMasterCertification: () => MasterCertificationReport;
+  reconcileSubledgers: () => { success: boolean; adjustmentsMade: number; details: string[] };
+  syncStatus: "synced" | "syncing" | "offline" | "error";
+  lastSyncTime: string | null;
+  pgliteStats: { provider: string; tableCount: number; engineVersion: string; counts?: Record<string, number> } | null;
+  syncWithPglite: (direction?: "push" | "pull") => Promise<{ success: boolean; message: string }>;
 
   // Double-Entry Accounting
   postJournalEntry: (entry: Omit<JournalEntry, "id" | "posted">) => { success: boolean; error?: string };
@@ -932,8 +937,14 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     addAuditLog("BOM Recipe Deleted", `Removed recipe ${id}`);
   };
 
-  // 2. Add Roasting Job (Delegates to ManufacturingEngine with atomic inventory & layer updates)
+  // 2. Add Roasting Job (Delegates to ManufacturingEngine with atomic inventory, FIFO layer & WIP GL updates)
   const addRoastingJob = (job: Omit<RoastingJob, "id" | "weightLossPct">) => {
+    const jobDate = job.jobDate || new Date().toISOString().split("T")[0];
+    const periodCheck = assertPeriodAllowsPosting(jobDate, fiscalPeriods);
+    if (!periodCheck.allowed) {
+      return { success: false, error: periodCheck.reason || "الفترة المالية مغلقة ولا يمكن تسجيل تشغيلات تحميص فيها." };
+    }
+
     const res = ManufacturingEngine.executeRoasting(
       {
         batchNumber: job.batchNumber,
@@ -946,7 +957,7 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         roastTimeMinutes: job.roastTimeMinutes,
         tempCelsius: job.tempCelsius,
         workerName: job.workerName,
-        jobDate: job.jobDate,
+        jobDate,
         roastProfile: job.roastProfile,
         operator: job.operator
       },
@@ -960,39 +971,49 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return { success: false, error: res.error || "Roasting operation failed." };
     }
 
+    const inputItem = items.find(i => i.id === job.inputItemId);
+    const outputItem = items.find(i => i.id === job.outputItemId);
+    const fifoValue = res.totalValueTransferred ?? Math.round((inputItem?.cost || 25) * job.inputQuantity * 100) / 100;
+
+    if (fifoValue > 0) {
+      const glRes = postJournalEntry({
+        date: jobDate,
+        reference: res.job.id,
+        notes: `تحويل مخزون خام إلى تحت التشغيل/محمص وفق طبقات FIFO (${job.batchNumber})`,
+        workflowStatus: "Posted",
+        currency: Currency.SAR,
+        exchangeRate: 1,
+        items: [
+          { id: `jei-rst-dr-${Date.now()}`, accountId: postingConfig.wipInventoryAccountId, accountName: "Work in Progress (WIP)", debit: fifoValue, credit: 0 },
+          { id: `jei-rst-cr-${Date.now()}`, accountId: postingConfig.rawMaterialsInventoryAccountId, accountName: "Raw Material Stock", debit: 0, credit: fifoValue }
+        ]
+      });
+      if (!glRes.success) {
+        return { success: false, error: glRes.error };
+      }
+    }
+
     setBatches(res.batches);
     setCostLayers(res.layers);
     setStockMovements(res.movements);
     setRoastingJobs(prev => [res.job!, ...prev]);
 
-    const inputItem = items.find(i => i.id === job.inputItemId);
-    const outputItem = items.find(i => i.id === job.outputItemId);
-    const estValue = Math.round((inputItem?.cost || 25) * job.inputQuantity * 100) / 100;
-    if (estValue > 0) {
-      postJournalEntry({
-        date: job.jobDate || new Date().toISOString().split("T")[0],
-        reference: res.job.id,
-        notes: `تحويل مخزون خام إلى تحت التشغيل/محمص (${job.batchNumber})`,
-        workflowStatus: "Posted",
-        currency: Currency.SAR,
-        exchangeRate: 1,
-        items: [
-          { id: `jei-rst-dr-${Date.now()}`, accountId: postingConfig.wipInventoryAccountId, accountName: "Work in Progress (WIP)", debit: estValue, credit: 0 },
-          { id: `jei-rst-cr-${Date.now()}`, accountId: postingConfig.rawMaterialsInventoryAccountId, accountName: "Raw Material Stock", debit: 0, credit: estValue }
-        ]
-      });
-    }
-
-    addAuditLog("Roasting Job", `Completed Roasting Job ${res.job.id}. Roasted ${job.inputQuantity}kg of ${inputItem?.name} into ${job.outputQuantity}kg of ${outputItem?.name}.`);
+    addAuditLog("Roasting Job", `Completed Roasting Job ${res.job.id}. Roasted ${job.inputQuantity}kg of ${inputItem?.name} into ${job.outputQuantity}kg of ${outputItem?.name} (FIFO Value: SAR ${fifoValue.toFixed(2)}).`);
 
     return { success: true };
   };
 
-  // 3. Add Grinding Job (Delegates to ManufacturingEngine with atomic inventory & layer updates)
+  // 3. Add Grinding Job (Delegates to ManufacturingEngine with atomic FIFO layer & WIP stage updates)
   const addGrindingJob = (job: Omit<GrindingJob, "id">) => {
+    const jobDate = job.jobDate || new Date().toISOString().split("T")[0];
+    const periodCheck = assertPeriodAllowsPosting(jobDate, fiscalPeriods);
+    if (!periodCheck.allowed) {
+      return { success: false, error: periodCheck.reason || "الفترة المالية مغلقة ولا يمكن تسجيل عمليات طحن فيها." };
+    }
+
     const res = ManufacturingEngine.executeGrinding(
       {
-        jobDate: job.jobDate,
+        jobDate,
         inputBatchNumber: job.inputBatchNumber,
         inputItemId: job.inputItemId,
         inputQuantity: job.inputQuantity,
@@ -1011,121 +1032,161 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return { success: false, error: res.error || "Grinding operation failed." };
     }
 
+    const fifoValue = res.totalValueTransferred ?? 0;
+    if (fifoValue > 0) {
+      const glRes = postJournalEntry({
+        date: jobDate,
+        reference: res.job.id,
+        notes: `تحويل داخلي مخزون تحت التشغيل (تحميص -> طحن) بالتكلفة الفعلية FIFO (${res.job.inputBatchNumber})`,
+        workflowStatus: "Posted",
+        currency: Currency.SAR,
+        exchangeRate: 1,
+        items: [
+          { id: `jei-grd-dr-${Date.now()}`, accountId: postingConfig.wipInventoryAccountId, accountName: "Work in Progress (Ground)", debit: fifoValue, credit: 0 },
+          { id: `jei-grd-cr-${Date.now()}`, accountId: postingConfig.wipInventoryAccountId, accountName: "Work in Progress (Roasted)", debit: 0, credit: fifoValue }
+        ]
+      });
+      if (!glRes.success) {
+        return { success: false, error: glRes.error };
+      }
+    }
+
     setBatches(res.batches);
     setCostLayers(res.layers);
     setStockMovements(res.movements);
     setGrindingJobs(prev => [res.job!, ...prev]);
 
-    addAuditLog("Grinding Job", `Grinding Job ${res.job.id} Completed: Ground ${job.inputQuantity}kg beans into ${job.outputQuantity}kg ground powder.`);
+    addAuditLog("Grinding Job", `Grinding Job ${res.job.id} Completed: Ground ${job.inputQuantity}kg beans into ${job.outputQuantity}kg ground powder (FIFO Value: SAR ${fifoValue.toFixed(2)}).`);
 
     return { success: true };
   };
 
-  // 4. Add Packaging Job (Deduct ground powder + bags/pouches, add final retail product & GL entry)
+  // 4. Add Packaging Job (Deduct ground powder + bags/pouches via FIFO layers, add final retail product & GL entry)
   const addPackagingJob = (job: Omit<PackagingJob, "id">) => {
-    const powderBatchIndex = batches.findIndex(b => b.batchNumber === job.inputBatchNumber && b.itemId === job.inputItemId);
-    if (powderBatchIndex === -1) {
-      return { success: false, error: `التشغيلة المدخلة '${job.inputBatchNumber}' غير صحيحة.` };
-    }
-    const powderBatch = batches[powderBatchIndex];
-    if (powderBatch.quantity < job.inputQuantity) {
-      return { success: false, error: `كمية المسحوق بالمشغل غير كافية. المتاح: ${powderBatch.quantity} كغم.` };
+    const jobDate = job.jobDate || new Date().toISOString().split("T")[0];
+    const periodCheck = assertPeriodAllowsPosting(jobDate, fiscalPeriods);
+    if (!periodCheck.allowed) {
+      return { success: false, error: periodCheck.reason || "الفترة المالية مغلقة ولا يمكن تسجيل عمليات تغليف فيها." };
     }
 
-    const pkgItemIndex = items.findIndex(i => i.id === job.packagingItemId);
-    if (pkgItemIndex === -1) {
-      return { success: false, error: "رمز مواد التعبئة غير مسجل بكتالوج المواد." };
-    }
-    const pkgItem = items[pkgItemIndex];
-    if (pkgItem.currentStock < job.packagingQtyUsed) {
-      return { success: false, error: `رصيد مواد التغليف غير كافٍ. المتوفر: ${pkgItem.currentStock} كيس، المطلوب: ${job.packagingQtyUsed} كيس.` };
-    }
-
-    // Deduct packaging pouch from FIFO batches
-    let remainingPkg = job.packagingQtyUsed;
-    let updatedBatches = batches.map(b => {
-      if (b.itemId === job.packagingItemId && b.quantity > 0 && remainingPkg > 0) {
-        if (b.quantity >= remainingPkg) {
-          const qty = b.quantity - remainingPkg;
-          remainingPkg = 0;
-          return { ...b, quantity: parseFloat(qty.toFixed(3)) };
-        } else {
-          remainingPkg -= b.quantity;
-          return { ...b, quantity: 0 };
-        }
-      }
-      return b;
-    });
-
-    // Deduct ground powder from its batch
-    updatedBatches = updatedBatches.map((b, idx) => {
-      if (idx === powderBatchIndex) {
-        return { ...b, quantity: parseFloat((b.quantity - job.inputQuantity).toFixed(3)) };
-      }
-      return b;
-    });
-
+    const inputItem = items.find(i => i.id === job.inputItemId);
+    const pkgItem = items.find(i => i.id === job.packagingItemId);
     const finishedItem = items.find(i => i.id === job.finishedItemId);
-    const totalBatchValue = Math.round(((powderBatch.costPerUnit * job.inputQuantity) + (pkgItem.cost * job.packagingQtyUsed)) * 100) / 100;
-    const unitCost = parseFloat((totalBatchValue / job.finishedQty).toFixed(2));
-    const newBatchId = `bat-${Math.floor(100000 + Math.random() * 900000)}`;
+
+    if (!inputItem || !pkgItem || !finishedItem) {
+      return { success: false, error: "أحد أصناف الإدخال أو التغليف أو المنتج التام غير معرف بكتالوج الأصناف." };
+    }
+
+    // 1. Issue ground coffee from FIFO layers
+    const groundIssue = InventoryEngine.issueStock(
+      {
+        itemId: job.inputItemId,
+        quantity: job.inputQuantity,
+        date: jobDate,
+        referenceType: "PACKAGING_JOB",
+        referenceId: job.inputBatchNumber,
+        createdBy: currentUser.username || "system",
+        notes: `Ground coffee consumed for packaging batch P-${job.inputBatchNumber}`
+      },
+      batches,
+      costLayers,
+      stockMovements,
+      inputItem.name
+    );
+
+    if (!groundIssue.success || !groundIssue.data) {
+      return { success: false, error: groundIssue.error || "كمية البن المطحون غير كافية في المستودع." };
+    }
+
+    // 2. Issue packaging pouches from FIFO layers
+    const pkgIssue = InventoryEngine.issueStock(
+      {
+        itemId: job.packagingItemId,
+        quantity: job.packagingQtyUsed,
+        date: jobDate,
+        referenceType: "PACKAGING_JOB",
+        referenceId: job.inputBatchNumber,
+        createdBy: currentUser.username || "system",
+        notes: `Packaging materials consumed for batch P-${job.inputBatchNumber}`
+      },
+      groundIssue.data.batches,
+      groundIssue.data.layers,
+      groundIssue.data.movements,
+      pkgItem.name
+    );
+
+    if (!pkgIssue.success || !pkgIssue.data) {
+      return { success: false, error: pkgIssue.error || "رصيد مواد التغليف والأكياس غير كافٍ." };
+    }
+
+    const groundFifoCost = groundIssue.data.totalCOGS;
+    const pkgFifoCost = pkgIssue.data.totalCOGS;
+    const totalBatchValue = Math.round((groundFifoCost + pkgFifoCost) * 100) / 100;
+    const unitCost = job.finishedQty > 0 ? Number((totalBatchValue / job.finishedQty).toFixed(4)) : finishedItem.cost;
     const newBatchNumber = `P-${job.inputBatchNumber}`;
-
-    const finalPacksBatch: Batch = {
-      id: newBatchId,
-      batchNumber: newBatchNumber,
-      itemId: job.finishedItemId,
-      itemName: finishedItem?.name || "",
-      manufactureDate: job.jobDate,
-      expiryDate: powderBatch.expiryDate,
-      quantity: job.finishedQty,
-      costPerUnit: unitCost,
-      warehouseId: "wh-3"
-    };
-
-    const newLayer: CostLayer = {
-      id: `layer-${newBatchId}`,
-      batchId: newBatchId,
-      batchNumber: newBatchNumber,
-      itemId: job.finishedItemId,
-      warehouseId: "wh-3",
-      receivedDate: job.jobDate,
-      initialQuantity: job.finishedQty,
-      remainingQuantity: job.finishedQty,
-      unitCost,
-      currency: Currency.SAR,
-      isExhausted: false,
-      sourceDocumentType: "ProductionOrder",
-      sourceDocumentId: newBatchNumber
-    };
-
     const jobId = `PKG-JOB-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    // 3. Receive finished retail pouches into Finished Goods Warehouse (wh-3)
+    const finReceive = InventoryEngine.receiveStock(
+      {
+        itemId: job.finishedItemId,
+        itemName: finishedItem.name,
+        warehouseId: "wh-3",
+        batchNumber: newBatchNumber,
+        quantity: job.finishedQty,
+        unitCost,
+        date: jobDate,
+        referenceType: "PACKAGING_JOB",
+        referenceId: jobId,
+        createdBy: currentUser.username || "system"
+      },
+      pkgIssue.data.batches,
+      pkgIssue.data.layers,
+      pkgIssue.data.movements
+    );
+
+    if (!finReceive.success || !finReceive.data) {
+      return { success: false, error: finReceive.error || "فشل في إيداع المنتج النهائي بالمستودع." };
+    }
+
+    if (totalBatchValue > 0) {
+      const glLines: any[] = [
+        { id: `jei-pkg-dr-${Date.now()}`, accountId: postingConfig.finishedGoodsInventoryAccountId, accountName: "Finished Product Stock", debit: totalBatchValue, credit: 0 }
+      ];
+      if (groundFifoCost > 0) {
+        glLines.push({ id: `jei-pkg-cr-wip-${Date.now()}`, accountId: postingConfig.wipInventoryAccountId, accountName: "Work in Progress (WIP)", debit: 0, credit: groundFifoCost });
+      }
+      if (pkgFifoCost > 0) {
+        glLines.push({ id: `jei-pkg-cr-raw-${Date.now()}`, accountId: postingConfig.rawMaterialsInventoryAccountId, accountName: "Raw Material / Packaging Stock", debit: 0, credit: pkgFifoCost });
+      }
+
+      const glRes = postJournalEntry({
+        date: jobDate,
+        reference: jobId,
+        notes: `استلام إنتاج تام معبأ للمستودع بتكلفة FIFO (${finishedItem.nameAr || finishedItem.name})`,
+        workflowStatus: "Posted",
+        currency: Currency.SAR,
+        exchangeRate: 1,
+        items: glLines
+      });
+
+      if (!glRes.success) {
+        return { success: false, error: glRes.error };
+      }
+    }
+
     const newPkgJob: PackagingJob = {
       ...job,
       id: jobId,
       status: JobStatus.Completed
     };
 
-    setBatches([...updatedBatches, finalPacksBatch]);
-    setCostLayers(prev => [...prev, newLayer]);
+    setBatches(finReceive.data.batches);
+    setCostLayers(finReceive.data.layers);
+    setStockMovements(finReceive.data.movements);
     setPackagingJobs(prev => [newPkgJob, ...prev]);
 
-    if (totalBatchValue > 0) {
-      postJournalEntry({
-        date: job.jobDate || new Date().toISOString().split("T")[0],
-        reference: jobId,
-        notes: `استلام إنتاج تام معبأ للمستودع (${finishedItem?.nameAr || finishedItem?.name})`,
-        workflowStatus: "Posted",
-        currency: Currency.SAR,
-        exchangeRate: 1,
-        items: [
-          { id: `jei-pkg-dr-${Date.now()}`, accountId: postingConfig.finishedGoodsInventoryAccountId, accountName: "Finished Product Stock", debit: totalBatchValue, credit: 0 },
-          { id: `jei-pkg-cr-${Date.now()}`, accountId: postingConfig.wipInventoryAccountId, accountName: "Work in Progress (WIP)", debit: 0, credit: totalBatchValue }
-        ]
-      });
-    }
-
-    addAuditLog("Packaging Job", `Packaging Job ${jobId} Completed: Blended & Packaged ${job.inputQuantity}kg powder into ${job.finishedQty} retail pouches of ${finishedItem?.name}.`);
+    addAuditLog("Packaging Job", `Packaging Job ${jobId} Completed: Blended & Packaged ${job.inputQuantity}kg powder into ${job.finishedQty} retail pouches of ${finishedItem.name} (FIFO Value: SAR ${totalBatchValue.toFixed(2)}).`);
     
     return { success: true };
   };
@@ -1490,6 +1551,11 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Sales Return (Credit Note 381) -> Restores Inventory + Reverses Revenue & VAT + Reverses COGS + Updates AR + Issues ZATCA Credit Note
   const addSalesReturn = (ret: Omit<SalesReturn, "id" | "status" | "zatcaUuid">) => {
+    const periodCheck = assertPeriodAllowsPosting(ret.date, fiscalPeriods);
+    if (!periodCheck.allowed) {
+      return { success: false, error: periodCheck.reason || "الفترة المالية مغلقة ولا يمكن إصدار إشعار دائن فيها." };
+    }
+
     const cnId = `CN-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
     let currentBatches = [...batches];
     let currentLayers = [...costLayers];
@@ -1526,46 +1592,42 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     }
 
-    setBatches(currentBatches);
-    setCostLayers(currentLayers);
-    setStockMovements(currentMovements);
-
     const creditAccount = ret.refundMethod === "Cash"
       ? postingConfig.cashAccountId
       : ret.refundMethod === "Bank"
       ? postingConfig.bankAccountId
       : postingConfig.accountsReceivableAccountId;
 
-    // 1. Reverse Revenue & VAT Output
-    postJournalEntry({
+    // 1. Reverse Revenue, VAT Output, COGS & Restore Inventory Asset in balanced Journal Entry
+    const glItems: any[] = [
+      { id: `jei-cn-rev-${Date.now()}`, accountId: postingConfig.wholesaleRevenueAccountId, accountName: "Wholesale Revenue", debit: ret.subtotal, credit: 0 },
+      { id: `jei-cn-vat-${Date.now()}`, accountId: postingConfig.vatOutputAccountId, accountName: "Sales Tax Payable", debit: ret.taxAmount, credit: 0 },
+      { id: `jei-cn-ar-${Date.now()}`, accountId: creditAccount, accountName: "Customer / Cash Refund", debit: 0, credit: ret.totalAmount }
+    ];
+    if (totalRestoredCogs > 0) {
+      glItems.push(
+        { id: `jei-cn-inv-${Date.now()}`, accountId: postingConfig.finishedGoodsInventoryAccountId, accountName: "Finished Product Stock", debit: totalRestoredCogs, credit: 0 },
+        { id: `jei-cn-cogs-${Date.now()}`, accountId: postingConfig.cogsAccountId, accountName: "Cost of Goods Sold (COGS)", debit: 0, credit: totalRestoredCogs }
+      );
+    }
+
+    const glRes = postJournalEntry({
       date: ret.date,
       reference: cnId,
       notes: `إشعار دائن مرتجع مبيعات ${cnId} (فاتورة ${ret.originalInvoiceId}) - ${ret.reason}`,
       workflowStatus: "Posted",
       currency: Currency.SAR,
       exchangeRate: 1,
-      items: [
-        { id: `jei-cn-rev-${Date.now()}`, accountId: postingConfig.wholesaleRevenueAccountId, accountName: "Wholesale Revenue", debit: ret.subtotal, credit: 0 },
-        { id: `jei-cn-vat-${Date.now()}`, accountId: postingConfig.vatOutputAccountId, accountName: "Sales Tax Payable", debit: ret.taxAmount, credit: 0 },
-        { id: `jei-cn-ar-${Date.now()}`, accountId: creditAccount, accountName: "Customer / Cash Refund", debit: 0, credit: ret.totalAmount }
-      ]
+      items: glItems
     });
 
-    // 2. Restore Inventory Asset & Reverse COGS
-    if (totalRestoredCogs > 0) {
-      postJournalEntry({
-        date: ret.date,
-        reference: `${cnId}-COGS`,
-        notes: `عكس تكلفة البضاعة المباعة وإعادة المخزون للإشعار الدائن ${cnId}`,
-        workflowStatus: "Posted",
-        currency: Currency.SAR,
-        exchangeRate: 1,
-        items: [
-          { id: `jei-cn-inv-${Date.now()}`, accountId: postingConfig.finishedGoodsInventoryAccountId, accountName: "Finished Product Stock", debit: totalRestoredCogs, credit: 0 },
-          { id: `jei-cn-cogs-${Date.now()}`, accountId: postingConfig.cogsAccountId, accountName: "Cost of Goods Sold (COGS)", debit: 0, credit: totalRestoredCogs }
-        ]
-      });
+    if (!glRes.success) {
+      return { success: false, error: glRes.error };
     }
+
+    setBatches(currentBatches);
+    setCostLayers(currentLayers);
+    setStockMovements(currentMovements);
 
     if (ret.refundMethod === "CreditAccount") {
       setCustomers(prev => prev.map(c => c.id === ret.customerId ? { ...c, balance: Math.max(0, c.balance - ret.totalAmount) } : c));
@@ -1645,6 +1707,11 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Purchase Return (Debit Note 383) -> Deducts FIFO Stock + Reverses AP & VAT Input + Issues ZATCA Debit Note
   const addPurchaseReturn = (ret: Omit<PurchaseReturn, "id" | "status">) => {
+    const periodCheck = assertPeriodAllowsPosting(ret.date, fiscalPeriods);
+    if (!periodCheck.allowed) {
+      return { success: false, error: periodCheck.reason || "الفترة المالية مغلقة ولا يمكن إصدار إشعار مدين فيها." };
+    }
+
     const dnId = `DN-PUR-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
     let currentBatches = [...batches];
     let currentLayers = [...costLayers];
@@ -1675,11 +1742,7 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       currentMovements = issueRes.data.movements;
     }
 
-    setBatches(currentBatches);
-    setCostLayers(currentLayers);
-    setStockMovements(currentMovements);
-
-    postJournalEntry({
+    const glRes = postJournalEntry({
       date: ret.date,
       reference: dnId,
       notes: `إشعار مدين مرتجع مشتريات ${dnId} للمورد ${ret.supplierName} - ${ret.reason}`,
@@ -1695,6 +1758,13 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       ]
     });
 
+    if (!glRes.success) {
+      return { success: false, error: glRes.error };
+    }
+
+    setBatches(currentBatches);
+    setCostLayers(currentLayers);
+    setStockMovements(currentMovements);
     setSuppliers(prev => prev.map(s => s.id === ret.supplierId ? { ...s, balance: Math.max(0, s.balance - ret.totalAmount) } : s));
 
     issueZatcaDocument({
@@ -2322,18 +2392,269 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       accounts,
       journalEntries,
       batches,
+      costLayers,
       items,
       customers,
       suppliers,
       salesInvoices,
       purchaseOrders,
-      postingConfig
+      postingConfig,
+      zatcaRecords
     });
   };
 
   const runMasterCertification = (): MasterCertificationReport => {
     return runCertificationSuite();
   };
+
+  // Subledger-to-GL Control Account Auto-Reconciliation Engine
+  const reconcileSubledgers = (): { success: boolean; adjustmentsMade: number; details: string[] } => {
+    const details: string[] = [];
+    let adjustmentsMade = 0;
+
+    // 1. Align FIFO costLayers with batches
+    const syncedLayers: CostLayer[] = batches.map(b => {
+      const existing = costLayers.find(l => l.batchNumber === b.batchNumber && l.itemId === b.itemId);
+      return {
+        id: existing?.id || `layer-${b.id}`,
+        batchId: b.id,
+        batchNumber: b.batchNumber,
+        itemId: b.itemId,
+        warehouseId: b.warehouseId,
+        receivedDate: b.manufactureDate,
+        initialQuantity: existing ? Math.max(existing.initialQuantity, b.quantity) : b.quantity,
+        remainingQuantity: b.quantity,
+        unitCost: b.costPerUnit,
+        currency: Currency.SAR,
+        isExhausted: b.quantity <= 0,
+        sourceDocumentType: existing?.sourceDocumentType || "PurchaseOrder",
+        sourceDocumentId: existing?.sourceDocumentId || b.batchNumber
+      };
+    });
+    setCostLayers(syncedLayers);
+
+    // 2. Recalculate item stock balances
+    const updatedItems = InventoryEngine.calculateItemStockBalances(items, batches);
+    setItems(updatedItems);
+
+    // 3. Check AR (1200), AP (2000), and Inventory (1300/1310/1320) vs GL
+    const audit = DataIntegrityChecker.runFullAudit({
+      accounts,
+      journalEntries,
+      batches,
+      costLayers: syncedLayers,
+      items: updatedItems,
+      customers,
+      suppliers,
+      salesInvoices,
+      purchaseOrders,
+      postingConfig,
+      zatcaRecords
+    });
+
+    const rec = audit.reconciliation;
+    if (rec) {
+      if (Math.abs(rec.arVariance) > 0.05) {
+        const diff = Math.round(rec.arVariance * 100) / 100;
+        postJournalEntry({
+          date: new Date().toISOString().split("T")[0],
+          reference: `REC-AR-${Date.now().toString().slice(-4)}`,
+          notes: `قيد تسوية ومطابقة آلية بين الأستاذ الفرعي للعملاء وحساب الذمم المدينة 1200`,
+          workflowStatus: "Posted",
+          currency: Currency.SAR,
+          exchangeRate: 1,
+          items: diff > 0
+            ? [
+                { id: `rec-ar-dr-${Date.now()}`, accountId: postingConfig.accountsReceivableAccountId, accountName: "Accounts Receivable", debit: diff, credit: 0 },
+                { id: `rec-ar-cr-${Date.now()}`, accountId: "acc-3100", accountName: "Retained Earnings", debit: 0, credit: diff }
+              ]
+            : [
+                { id: `rec-ar-dr-${Date.now()}`, accountId: "acc-3100", accountName: "Retained Earnings", debit: Math.abs(diff), credit: 0 },
+                { id: `rec-ar-cr-${Date.now()}`, accountId: postingConfig.accountsReceivableAccountId, accountName: "Accounts Receivable", debit: 0, credit: Math.abs(diff) }
+              ]
+        });
+        adjustmentsMade++;
+        details.push(`تمت مطابقة حساب الذمم المدينة (1200) مع أرصدة العملاء بتسوية قدرها ${diff.toFixed(2)} ر.س`);
+      }
+
+      if (Math.abs(rec.apVariance) > 0.05) {
+        const diff = Math.round(rec.apVariance * 100) / 100;
+        postJournalEntry({
+          date: new Date().toISOString().split("T")[0],
+          reference: `REC-AP-${Date.now().toString().slice(-4)}`,
+          notes: `قيد تسوية ومطابقة آلية بين الأستاذ الفرعي للموردين وحساب الذمم الدائنة 2000`,
+          workflowStatus: "Posted",
+          currency: Currency.SAR,
+          exchangeRate: 1,
+          items: diff > 0
+            ? [
+                { id: `rec-ap-dr-${Date.now()}`, accountId: "acc-3100", accountName: "Retained Earnings", debit: diff, credit: 0 },
+                { id: `rec-ap-cr-${Date.now()}`, accountId: postingConfig.accountsPayableAccountId, accountName: "Accounts Payable", debit: 0, credit: diff }
+              ]
+            : [
+                { id: `rec-ap-dr-${Date.now()}`, accountId: postingConfig.accountsPayableAccountId, accountName: "Accounts Payable", debit: Math.abs(diff), credit: 0 },
+                { id: `rec-ap-cr-${Date.now()}`, accountId: "acc-3100", accountName: "Retained Earnings", debit: 0, credit: Math.abs(diff) }
+              ]
+        });
+        adjustmentsMade++;
+        details.push(`تمت مطابقة حساب الذمم الدائنة (2000) مع أرصدة الموردين بتسوية قدرها ${diff.toFixed(2)} ر.س`);
+      }
+
+      if (Math.abs(rec.inventoryVariance) > 0.5) {
+        const diff = Math.round(rec.inventoryVariance * 100) / 100;
+        postJournalEntry({
+          date: new Date().toISOString().split("T")[0],
+          reference: `REC-INV-${Date.now().toString().slice(-4)}`,
+          notes: `قيد تسوية ومطابقة آلية بين تقييم طبقات المخزون FIFO وحساب المخزون بالأستاذ العام`,
+          workflowStatus: "Posted",
+          currency: Currency.SAR,
+          exchangeRate: 1,
+          items: diff > 0
+            ? [
+                { id: `rec-inv-dr-${Date.now()}`, accountId: postingConfig.finishedGoodsInventoryAccountId, accountName: "Finished Product Stock", debit: diff, credit: 0 },
+                { id: `rec-inv-cr-${Date.now()}`, accountId: "acc-3100", accountName: "Retained Earnings", debit: 0, credit: diff }
+              ]
+            : [
+                { id: `rec-inv-dr-${Date.now()}`, accountId: postingConfig.cogsAccountId, accountName: "Cost of Goods Sold (COGS)", debit: Math.abs(diff), credit: 0 },
+                { id: `rec-inv-cr-${Date.now()}`, accountId: postingConfig.finishedGoodsInventoryAccountId, accountName: "Finished Product Stock", debit: 0, credit: Math.abs(diff) }
+              ]
+        });
+        adjustmentsMade++;
+        details.push(`تمت مطابقة حسابات المخزون (1300/1310/1320) مع طبقات FIFO بتسوية قدرها ${diff.toFixed(2)} ر.س`);
+      }
+    }
+
+    if (adjustmentsMade === 0) {
+      details.push("جميع الحسابات الرقابية (العملاء 1200، الموردين 2000، وطبقات المخزون FIFO) متطابقة 100% مع الأستاذ العام.");
+    } else {
+      addAuditLog("Subledger Reconciliation", `Executed automated subledger-to-GL reconciliation (${adjustmentsMade} adjustments): ${details.join(" | ")}`);
+    }
+
+    return { success: true, adjustmentsMade, details };
+  };
+
+  // Bidirectional PGlite Database Synchronization State & Engine
+  const [syncStatus, setSyncStatus] = useState<"synced" | "syncing" | "offline" | "error">("synced");
+  const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
+  const [pgliteStats, setPgliteStats] = useState<{
+    provider: string;
+    tableCount: number;
+    engineVersion: string;
+    counts?: Record<string, number>;
+  } | null>(null);
+
+  const syncWithPglite = async (direction: "push" | "pull" = "push"): Promise<{ success: boolean; message: string }> => {
+    setSyncStatus("syncing");
+    try {
+      if (direction === "pull") {
+        const pullRes = await fetch("/api/v1/sync/pull");
+        if (!pullRes.ok) throw new Error(`HTTP ${pullRes.status}`);
+        const json = await pullRes.json();
+        if (json.success && json.data?.hasSnapshot && json.data?.snapshot) {
+          const snap = json.data.snapshot;
+          if (Array.isArray(snap.accounts)) setAccounts(snap.accounts);
+          if (Array.isArray(snap.warehouses)) setWarehouses(snap.warehouses);
+          if (Array.isArray(snap.items)) setItems(snap.items);
+          if (Array.isArray(snap.recipes)) setRecipes(snap.recipes);
+          if (Array.isArray(snap.customers)) setCustomers(snap.customers);
+          if (Array.isArray(snap.suppliers)) setSuppliers(snap.suppliers);
+          if (Array.isArray(snap.journalEntries)) setJournalEntries(snap.journalEntries);
+          if (Array.isArray(snap.batches)) setBatches(snap.batches);
+          if (Array.isArray(snap.costLayers)) setCostLayers(snap.costLayers);
+          if (Array.isArray(snap.stockMovements)) setStockMovements(snap.stockMovements);
+          if (Array.isArray(snap.salesInvoices)) setSalesInvoices(snap.salesInvoices);
+          if (Array.isArray(snap.purchaseOrders)) setPurchaseOrders(snap.purchaseOrders);
+          if (Array.isArray(snap.fiscalPeriods)) setFiscalPeriods(snap.fiscalPeriods);
+          if (Array.isArray(snap.zatcaRecords)) setZatcaRecords(snap.zatcaRecords);
+          setLastSyncTime(json.data.syncedAt || new Date().toISOString());
+          setSyncStatus("synced");
+          return { success: true, message: "تم استرجاع ومزامنة البيانات من قاعدة PGlite المحلية بنجاح." };
+        }
+      }
+
+      const pushRes = await fetch("/api/v1/sync/push", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accounts,
+          warehouses,
+          items,
+          recipes,
+          customers,
+          suppliers,
+          journalEntries,
+          batches,
+          costLayers,
+          stockMovements,
+          roastingJobs,
+          grindingJobs,
+          packagingJobs,
+          purchaseOrders,
+          salesInvoices,
+          posSessions,
+          bankTransactions,
+          fiscalPeriods,
+          zatcaRecords,
+          salesQuotations,
+          salesOrders,
+          deliveryNotes,
+          salesReturns,
+          purchaseRequests,
+          purchaseReturns,
+          fixedAssets,
+          employees,
+          payrollRuns,
+          crmLeads,
+          costCenters,
+          companySettings,
+          postingConfig
+        })
+      });
+
+      if (!pushRes.ok) throw new Error(`HTTP ${pushRes.status}`);
+      const pushJson = await pushRes.json();
+      if (pushJson.success && pushJson.data) {
+        setLastSyncTime(pushJson.data.syncedAt);
+        setPgliteStats({
+          provider: pushJson.data.provider || "pglite",
+          tableCount: pushJson.data.tableCount || 31,
+          engineVersion: "PostgreSQL 16 (PGlite Embedded)",
+          counts: pushJson.data.counts
+        });
+        setSyncStatus("synced");
+        return { success: true, message: "تمت مزامنة وترحيل جميع الجداول والقيود مع قاعدة بيانات PGlite بنجاح." };
+      }
+      throw new Error("Invalid sync response");
+    } catch (err: any) {
+      setSyncStatus("offline");
+      return { success: false, message: `تعذر الاتصال بمحرك PGlite الخلفي: ${err.message}` };
+    }
+  };
+
+  // Automatic debounced background synchronization with PGlite on ledger/inventory changes
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      syncWithPglite("push").catch(() => {});
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [
+    journalEntries,
+    batches,
+    costLayers,
+    salesInvoices,
+    purchaseOrders,
+    salesReturns,
+    purchaseReturns,
+    roastingJobs,
+    grindingJobs,
+    packagingJobs,
+    fixedAssets,
+    payrollRuns,
+    fiscalPeriods,
+    customers,
+    suppliers,
+    zatcaRecords
+  ]);
 
   // Toast notifications state
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -2672,9 +2993,10 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       purchaseRequests, purchaseReturns, fixedAssets, employees, payrollRuns,
       crmLeads, costCenters,
 
-      // Ledger-derived reports & Auditing
+      // Ledger-derived reports, Auditing & PGlite Sync
       getTrialBalance, getIncomeStatement, getBalanceSheet,
       runDataIntegrityAudit, runMasterCertification,
+      reconcileSubledgers, syncStatus, lastSyncTime, pgliteStats, syncWithPglite,
       
       // Double Entry
       postJournalEntry, reverseJournalEntry,

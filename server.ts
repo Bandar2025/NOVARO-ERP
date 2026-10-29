@@ -16,6 +16,7 @@ import suppliersRouter from "./server/routes/suppliers";
 import inventoryRouter from "./server/routes/inventory";
 import salesRouter from "./server/routes/sales";
 import purchasesRouter from "./server/routes/purchases";
+import syncRouter from "./server/routes/sync";
 import { errorHandler } from "./server/middleware/errorHandler";
 import { authenticateToken, requirePermission, AuthRequest } from "./server/middleware/authMiddleware";
 
@@ -47,8 +48,8 @@ async function startServer() {
   const PORT = 3000;
 
   // Body parsers
-  app.use(express.json());
-  app.use(express.urlencoded({ extended: true }));
+  app.use(express.json({ limit: "15mb" }));
+  app.use(express.urlencoded({ extended: true, limit: "15mb" }));
 
   // SECURE INTERNAL AI API Endpoint
   app.post("/api/gemini/generate", authenticateToken, async (req: AuthRequest, res) => {
@@ -130,6 +131,7 @@ async function startServer() {
   app.use("/api/v1/inventory", inventoryRouter);
   app.use("/api/v1/sales", salesRouter);
   app.use("/api/v1/purchases", purchasesRouter);
+  app.use("/api/v1/sync", syncRouter);
 
   // Global API Error Handler
   app.use(errorHandler);

@@ -446,6 +446,50 @@ ${linesXml}
     return matrix;
   }
 
+  /**
+   * Verify cryptographic chain integrity across chronological ZATCA documents (ICV & PIH linkage)
+   */
+  static verifyChain(
+    records: Array<{ icv: number; previousInvoiceHash: string; invoiceHash: string }>
+  ): { valid: boolean; brokenAtIcv?: number; reason?: string } {
+    if (!records || records.length === 0) {
+      return { valid: true };
+    }
+    const sorted = [...records].sort((a, b) => a.icv - b.icv);
+    for (let i = 0; i < sorted.length; i++) {
+      const curr = sorted[i];
+      if (!curr.invoiceHash) {
+        return { valid: false, brokenAtIcv: curr.icv, reason: "Missing cryptographic invoiceHash" };
+      }
+      if (i === 0) {
+        if (curr.icv === 1 && curr.previousInvoiceHash !== ZATCA_GENESIS_PIH) {
+          return {
+            valid: false,
+            brokenAtIcv: curr.icv,
+            reason: "Genesis record (ICV 1) does not match ZATCA_GENESIS_PIH"
+          };
+        }
+      } else {
+        const prev = sorted[i - 1];
+        if (curr.icv !== prev.icv + 1) {
+          return {
+            valid: false,
+            brokenAtIcv: curr.icv,
+            reason: `Non-sequential ICV: expected ${prev.icv + 1}, got ${curr.icv}`
+          };
+        }
+        if (curr.previousInvoiceHash !== prev.invoiceHash) {
+          return {
+            valid: false,
+            brokenAtIcv: curr.icv,
+            reason: `PIH mismatch at ICV ${curr.icv}: does not match previous invoiceHash`
+          };
+        }
+      }
+    }
+    return { valid: true };
+  }
+
   private static escapeXml(str: string): string {
     return str
       .replace(/&/g, "&amp;")

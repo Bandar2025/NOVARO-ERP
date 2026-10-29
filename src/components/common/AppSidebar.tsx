@@ -641,6 +641,7 @@ export default function AppSidebar({
 }: AppSidebarProps) {
   const isAr = language === "ar";
 
+  const [searchQuery, setSearchQuery] = useState("");
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
     dashboard: true,
     accounting_domain: true,
@@ -663,6 +664,33 @@ export default function AppSidebar({
     setExpandedGroups(prev => ({ ...prev, [groupId]: !prev[groupId] }));
   };
 
+  const allExpanded = DOMAIN_GROUPS.every(g => expandedGroups[g.id]);
+  const toggleAllGroups = () => {
+    const nextState = !allExpanded;
+    const updated: Record<string, boolean> = {};
+    DOMAIN_GROUPS.forEach(g => {
+      updated[g.id] = nextState;
+    });
+    setExpandedGroups(updated);
+  };
+
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+  const filteredGroups = normalizedQuery
+    ? DOMAIN_GROUPS.map(group => {
+        const groupMatch =
+          group.titleAr.toLowerCase().includes(normalizedQuery) ||
+          group.titleEn.toLowerCase().includes(normalizedQuery);
+        const matchingItems = group.items.filter(
+          item =>
+            groupMatch ||
+            item.titleAr.toLowerCase().includes(normalizedQuery) ||
+            item.titleEn.toLowerCase().includes(normalizedQuery) ||
+            item.id.toLowerCase().includes(normalizedQuery)
+        );
+        return { ...group, items: matchingItems };
+      }).filter(group => group.items.length > 0)
+    : DOMAIN_GROUPS;
+
   const CollapseIcon = isAr
     ? (collapsed ? ChevronFirst : ChevronLast)
     : (collapsed ? ChevronLast : ChevronFirst);
@@ -670,50 +698,94 @@ export default function AppSidebar({
   return (
     <aside
       aria-label={isAr ? "شريط التنقل الجانبي" : "Main Navigation Sidebar"}
-      className={`hidden md:flex flex-col bg-slate-950 border-r border-slate-900 transition-all duration-300 select-none z-30 ${
+      className={`hidden md:flex flex-col h-full min-h-0 shrink-0 overflow-hidden overscroll-contain bg-slate-950 border-r border-slate-900 transition-all duration-300 select-none z-30 ${
         collapsed ? "w-20" : "w-72"
       }`}
     >
-      {/* Brand Header */}
-      <div className="p-4 border-b border-slate-900 flex items-center justify-between">
-        {!collapsed && (
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-teal-700 rounded-xl flex items-center justify-center text-white font-black text-sm shadow-md shadow-teal-700/25 flex-shrink-0">
+      {/* Sticky Top Header & Quick Search */}
+      <div className="shrink-0 bg-slate-950 border-b border-slate-900 z-10">
+        <div className="p-4 flex items-center justify-between">
+          {!collapsed && (
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 bg-teal-700 rounded-xl flex items-center justify-center text-white font-black text-sm shadow-md shadow-teal-700/25 flex-shrink-0">
+                NV
+              </div>
+              <div className="overflow-hidden">
+                <h2 className="text-xs font-black text-white uppercase tracking-wider truncate">
+                  {isAr ? "نوفارو ERP" : "Novaro ERP"}
+                </h2>
+                <span className="text-[10px] font-mono text-teal-400 uppercase font-bold tracking-widest block truncate">
+                  {isAr ? "نظام المؤسسات الصناعية" : "Enterprise Core"}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {collapsed && (
+            <div className="w-10 h-10 bg-teal-700 rounded-xl flex items-center justify-center text-white font-black text-sm shadow-md shadow-teal-700/25 mx-auto">
               NV
             </div>
-            <div className="overflow-hidden">
-              <h2 className="text-xs font-black text-white uppercase tracking-wider truncate">
-                {isAr ? "نوفارو ERP" : "Novaro ERP"}
-              </h2>
-              <span className="text-[10px] font-mono text-teal-400 uppercase font-bold tracking-widest block truncate">
-                {isAr ? "نظام المؤسسات الصناعية" : "Enterprise Core"}
+          )}
+
+          {onToggleCollapse && !collapsed && (
+            <button
+              type="button"
+              onClick={onToggleCollapse}
+              title={isAr ? "طي القائمة" : "Collapse Sidebar"}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-900 transition-colors"
+            >
+              <CollapseIcon className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+
+        {/* Quick Search & Group Expand/Collapse Controls */}
+        {!collapsed && (
+          <div className="px-3 pb-3 space-y-2">
+            <div className="relative">
+              <FileSearch className="w-3.5 h-3.5 text-slate-500 absolute top-1/2 -translate-y-1/2 right-2.5 pointer-events-none" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={isAr ? "بحث سريع في الوحدات..." : "Quick module search..."}
+                className="w-full bg-slate-900/90 border border-slate-800 rounded-xl pr-8 pl-7 py-1.5 text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-teal-600 transition-colors"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  className="absolute top-1/2 -translate-y-1/2 left-2 text-[10px] text-slate-400 hover:text-white px-1"
+                  title={isAr ? "مسح البحث" : "Clear"}
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+            <div className="flex items-center justify-between px-1 text-[10px] text-slate-400">
+              <span>
+                {isAr
+                  ? `${filteredGroups.reduce((s, g) => s + g.items.length, 0)} وحدة نشطة`
+                  : `${filteredGroups.reduce((s, g) => s + g.items.length, 0)} modules`}
               </span>
+              <button
+                type="button"
+                onClick={toggleAllGroups}
+                className="text-teal-400 hover:text-teal-300 font-bold transition-colors"
+              >
+                {allExpanded
+                  ? (isAr ? "طي جميع الأقسام" : "Collapse All")
+                  : (isAr ? "توسيع جميع الأقسام" : "Expand All")}
+              </button>
             </div>
           </div>
-        )}
-
-        {collapsed && (
-          <div className="w-10 h-10 bg-teal-700 rounded-xl flex items-center justify-center text-white font-black text-sm shadow-md shadow-teal-700/25 mx-auto">
-            NV
-          </div>
-        )}
-
-        {onToggleCollapse && !collapsed && (
-          <button
-            type="button"
-            onClick={onToggleCollapse}
-            title={isAr ? "طي القائمة" : "Collapse Sidebar"}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-900 transition-colors"
-          >
-            <CollapseIcon className="w-4 h-4" />
-          </button>
         )}
       </div>
 
-      {/* Navigation Groups List */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-3 custom-scrollbar">
-        {DOMAIN_GROUPS.map((group) => {
-          const isExpanded = expandedGroups[group.id];
+      {/* Independently Scrollable Navigation Groups List */}
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-3 space-y-2.5 custom-scrollbar">
+        {filteredGroups.map((group) => {
+          const isExpanded = normalizedQuery ? true : expandedGroups[group.id];
           const hasActiveItem = group.items.some(it => it.id === activeSection);
           const GroupIcon = group.icon;
 
@@ -806,8 +878,8 @@ export default function AppSidebar({
         })}
       </div>
 
-      {/* Footer Info / Toggle */}
-      <div className="p-3 border-t border-slate-900">
+      {/* Pinned Footer Info / Toggle */}
+      <div className="shrink-0 p-3 border-t border-slate-900 bg-slate-950">
         {collapsed ? (
           <button
             type="button"
@@ -818,15 +890,15 @@ export default function AppSidebar({
             <CollapseIcon className="w-4 h-4" />
           </button>
         ) : (
-          <div className="p-3 bg-slate-900/60 border border-slate-850 rounded-xl space-y-1 text-right">
+          <div className="p-2.5 bg-slate-900/60 border border-slate-850 rounded-xl space-y-1 text-right">
             <div className="flex items-center gap-1.5 text-[10px] font-bold text-teal-400 uppercase tracking-wider justify-end">
               <ShieldCheck className="w-3.5 h-3.5" />
               <span>{isAr ? "الرقابة المحاسبية نشطة" : "Audit Invariant Active"}</span>
             </div>
             <p className="text-[10px] text-slate-400 leading-normal">
               {isAr
-                ? "ميزان المراجعة متطابق لحظياً عبر قيود الترحيل التلقائي."
-                : "Trial balance equilibrium maintained in real-time."}
+                ? "ميزان المراجعة والمستودعات متطابقان لحظياً."
+                : "Trial balance & FIFO lots synchronized."}
             </p>
           </div>
         )}

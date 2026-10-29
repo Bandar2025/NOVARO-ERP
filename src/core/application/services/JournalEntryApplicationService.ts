@@ -139,7 +139,7 @@ export class JournalEntryApplicationService {
         const allEntries = await uow.journalEntries.getAll({ context });
         const periods = await uow.fiscalPeriods.getAll({ context, forUpdate: true });
 
-        const postResult = AccountingEngine.postEntry(entry, allEntries, periods);
+        const postResult = AccountingEngine.postEntry({ ...entry, workflowStatus: "Posted" }, allEntries, periods);
         if (!postResult.success || !postResult.entry) {
           if (
             postResult.error?.toLowerCase().includes("period") ||
@@ -168,7 +168,7 @@ export class JournalEntryApplicationService {
     const allEntries = await this.journalEntryRepo.getAll({ context });
     const periods = await this.fiscalPeriodRepo.getAll({ context });
 
-    const postResult = AccountingEngine.postEntry(entry, allEntries, periods);
+    const postResult = AccountingEngine.postEntry({ ...entry, workflowStatus: "Posted" }, allEntries, periods);
     if (!postResult.success || !postResult.entry) {
       if (
         postResult.error?.toLowerCase().includes("period") ||

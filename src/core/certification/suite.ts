@@ -1,7 +1,8 @@
-// NOVARO ERP Phase 1 Master Certification Suite Runner
+// NOVARO ERP Master Certification Suite Runner
 import { runAccountingCertification, CertificationCheckResult } from "./accounting.certification";
 import { runInventoryCertification } from "./inventory.certification";
 import { runCommerceCertification } from "./commerce.certification";
+import { runEnterpriseCertification } from "./enterprise.certification";
 
 export interface MasterCertificationReport {
   timestamp: string;
@@ -17,15 +18,16 @@ export function runCertificationSuite(): MasterCertificationReport {
   const accountingResults = runAccountingCertification();
   const inventoryResults = runInventoryCertification();
   const commerceResults = runCommerceCertification();
+  const enterpriseResults = runEnterpriseCertification();
 
-  const allResults = [...accountingResults, ...inventoryResults, ...commerceResults];
+  const allResults = [...accountingResults, ...inventoryResults, ...commerceResults, ...enterpriseResults];
 
   const passedCount = allResults.filter(r => r.status === "PASS").length;
   const failedCount = allResults.filter(r => r.status === "FAIL").length;
 
   const lines: string[] = [];
   lines.push("===============================================================");
-  lines.push("          NOVARO ERP — PHASE 1 CERTIFICATION SUITE             ");
+  lines.push("       NOVARO ERP — ENTERPRISE MASTER CERTIFICATION SUITE      ");
   lines.push("===============================================================");
   
   allResults.forEach(r => {

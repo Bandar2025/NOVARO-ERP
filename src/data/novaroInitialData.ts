@@ -171,16 +171,16 @@ export const initialJournalEntries: JournalEntry[] = [
   }
 ];
 
-// Seed Batches
+// Seed Batches (Reconciled 100% with GL Inventory Control Accounts: 85,000 Raw + 62,000 Finished = 147,000 SAR)
 export const initialBatches: Batch[] = [
-  { id: "bat-001", batchNumber: "B-ETH-260701", itemId: "item-1", itemName: "Ethiopian Yirgacheffe (Green)", manufactureDate: "2026-07-01", expiryDate: "2028-07-01", quantity: 800, supplierId: "sup-1", costPerUnit: 28, warehouseId: "wh-1" },
+  { id: "bat-001", batchNumber: "B-ETH-260701", itemId: "item-1", itemName: "Ethiopian Yirgacheffe (Green)", manufactureDate: "2026-07-01", expiryDate: "2028-07-01", quantity: 1000, supplierId: "sup-1", costPerUnit: 28, warehouseId: "wh-1" },
   { id: "bat-002", batchNumber: "B-BRZ-260702", itemId: "item-2", itemName: "Brazilian Santos (Green)", manufactureDate: "2026-07-02", expiryDate: "2028-07-02", quantity: 1500, supplierId: "sup-2", costPerUnit: 22, warehouseId: "wh-1" },
   { id: "bat-003", batchNumber: "B-CRD-260703", itemId: "item-3", itemName: "Guatemalan Cardamom (Green)", manufactureDate: "2026-07-03", expiryDate: "2028-07-03", quantity: 200, supplierId: "sup-1", costPerUnit: 75, warehouseId: "wh-1" },
-  { id: "bat-004", batchNumber: "B-RST-ETH-01", itemId: "item-5", itemName: "Ethiopian Roasted Beans (Medium)", manufactureDate: "2026-07-06", expiryDate: "2027-07-06", quantity: 150, costPerUnit: 35, warehouseId: "wh-2" },
-  { id: "bat-005", batchNumber: "B-GRD-ETH-01", itemId: "item-7", itemName: "Ethiopian Ground Coffee", manufactureDate: "2026-07-07", expiryDate: "2027-07-07", quantity: 80, costPerUnit: 38, warehouseId: "wh-2" },
-  { id: "bat-006", batchNumber: "B-PKG-PCH-01", itemId: "item-9", itemName: "Premium Aluminium Pouch 250g", manufactureDate: "2026-07-01", expiryDate: "2030-07-01", quantity: 5000, costPerUnit: 0.8, warehouseId: "wh-1" },
-  { id: "bat-007", batchNumber: "B-FIN-CRD-01", itemId: "item-11", itemName: "Novaro Cardamom Coffee Pouch 250g", manufactureDate: "2026-07-08", expiryDate: "2027-07-08", quantity: 450, costPerUnit: 16.5, warehouseId: "wh-3" },
-  { id: "bat-008", batchNumber: "B-FIN-ESP-01", itemId: "item-12", itemName: "Novaro Espresso Roast Beans Bag 1kg", manufactureDate: "2026-07-08", expiryDate: "2027-07-08", quantity: 210, costPerUnit: 42.0, warehouseId: "wh-3" }
+  { id: "bat-004", batchNumber: "B-RST-ETH-01", itemId: "item-5", itemName: "Ethiopian Roasted Beans (Medium)", manufactureDate: "2026-07-06", expiryDate: "2027-07-06", quantity: 300, costPerUnit: 36, warehouseId: "wh-2" },
+  { id: "bat-005", batchNumber: "B-GRD-ETH-01", itemId: "item-7", itemName: "Ethiopian Ground Coffee", manufactureDate: "2026-07-07", expiryDate: "2027-07-07", quantity: 100, costPerUnit: 38, warehouseId: "wh-2" },
+  { id: "bat-006", batchNumber: "B-PKG-PCH-01", itemId: "item-9", itemName: "Premium Aluminium Pouch 250g", manufactureDate: "2026-07-01", expiryDate: "2030-07-01", quantity: 11250, costPerUnit: 0.8, warehouseId: "wh-1" },
+  { id: "bat-007", batchNumber: "B-FIN-CRD-01", itemId: "item-11", itemName: "Novaro Cardamom Coffee Pouch 250g", manufactureDate: "2026-07-08", expiryDate: "2027-07-08", quantity: 1600, costPerUnit: 16.5, warehouseId: "wh-3" },
+  { id: "bat-008", batchNumber: "B-FIN-ESP-01", itemId: "item-12", itemName: "Novaro Espresso Roast Beans Bag 1kg", manufactureDate: "2026-07-08", expiryDate: "2027-07-08", quantity: 500, costPerUnit: 42.0, warehouseId: "wh-3" }
 ];
 
 // Roasting, Grinding, and Packaging jobs

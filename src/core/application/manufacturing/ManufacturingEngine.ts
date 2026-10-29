@@ -50,6 +50,7 @@ export class ManufacturingEngine {
     batches?: Batch[];
     layers?: CostLayer[];
     movements?: DomainStockMovement[];
+    totalValueTransferred?: number;
   } {
     if (dto.inputQuantity <= 0) {
       return { success: false, error: "Input raw quantity must be greater than zero." };
@@ -93,17 +94,18 @@ export class ManufacturingEngine {
     }
 
     const rawCostConsumed = issueRes.data.totalCOGS;
-    // Calculate cost per kg of roasted beans including standard roasting overhead
+    // Calculate cost per kg of roasted beans preserving total FIFO cost
     const costPerRoastedKg = dto.outputQuantity > 0
-      ? Math.round((rawCostConsumed / dto.outputQuantity) * 100) / 100
+      ? Number((rawCostConsumed / dto.outputQuantity).toFixed(4))
       : 25;
+    const totalValueTransferred = Math.round(dto.outputQuantity * costPerRoastedKg * 100) / 100;
 
-    // Receive roasted beans into inventory
+    // Receive roasted beans into WIP warehouse (wh-2)
     const receiveRes = InventoryEngine.receiveStock(
       {
         itemId: dto.outputItemId,
         itemName: outputItem.name,
-        warehouseId: "wh-1",
+        warehouseId: "wh-2",
         batchNumber: dto.batchNumber,
         quantity: dto.outputQuantity,
         unitCost: costPerRoastedKg,
@@ -157,7 +159,8 @@ export class ManufacturingEngine {
       job: completedJob,
       batches: receiveRes.data.batches,
       layers: receiveRes.data.layers,
-      movements: receiveRes.data.movements
+      movements: receiveRes.data.movements,
+      totalValueTransferred
     };
   }
 
@@ -178,6 +181,7 @@ export class ManufacturingEngine {
     batches?: Batch[];
     layers?: CostLayer[];
     movements?: DomainStockMovement[];
+    totalValueTransferred?: number;
   } {
     if (dto.inputQuantity <= 0) {
       return { success: false, error: "Input roasted beans quantity must be greater than zero." };
@@ -218,8 +222,9 @@ export class ManufacturingEngine {
 
     const roastedCostConsumed = issueRes.data.totalCOGS;
     const costPerGroundKg = dto.outputQuantity > 0
-      ? Math.round((roastedCostConsumed / dto.outputQuantity) * 100) / 100
+      ? Number((roastedCostConsumed / dto.outputQuantity).toFixed(4))
       : 30;
+    const totalValueTransferred = Math.round(dto.outputQuantity * costPerGroundKg * 100) / 100;
 
     const groundBatchNo = `G-${dto.inputBatchNumber || Date.now().toString().slice(-6)}`;
 
@@ -262,7 +267,8 @@ export class ManufacturingEngine {
       job: completedJob,
       batches: receiveRes.data.batches,
       layers: receiveRes.data.layers,
-      movements: receiveRes.data.movements
+      movements: receiveRes.data.movements,
+      totalValueTransferred
     };
   }
 }

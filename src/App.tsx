@@ -157,13 +157,13 @@ export default function App() {
     <StateProvider>
       <div 
         dir={isAr ? "rtl" : "ltr"} 
-        className="min-h-screen bg-slate-100/60 font-sans text-slate-800 flex flex-col selection:bg-teal-500/15 selection:text-teal-900 transition-all duration-300"
+        className="h-screen overflow-hidden bg-slate-100/60 font-sans text-slate-800 flex flex-col selection:bg-teal-500/15 selection:text-teal-900 transition-all duration-300"
       >
         {/* Realtime Toast Notifications Container */}
         <ToastNotification language={language} />
 
         {/* Top Operational Compliance Notice */}
-        <div className="bg-slate-950 text-slate-200 border-b border-slate-900 px-4 py-1.5 text-center text-xs flex items-center justify-center gap-2">
+        <div className="shrink-0 bg-slate-950 text-slate-200 border-b border-slate-900 px-4 py-1.5 text-center text-xs flex items-center justify-center gap-2">
           <ShieldCheck className="w-3.5 h-3.5 text-teal-400 flex-shrink-0" />
           <span className="font-medium text-[11px]">
             {isAr ? (
@@ -179,7 +179,7 @@ export default function App() {
         </div>
 
         {/* Main Application Layout with Global Header and Responsive Navigation */}
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
           {/* Unified System Top Header */}
           <AppHeader
             activeSection={activeSection}
@@ -189,7 +189,7 @@ export default function App() {
             onToggleMobileMenu={() => setMobileMenuOpen(prev => !prev)}
           />
 
-          <div className="flex-1 flex overflow-hidden">
+          <div className="flex-1 flex min-h-0 overflow-hidden relative">
             {/* Standardized Enterprise Sidebar */}
             <AppSidebar
               activeSection={activeSection}
@@ -213,7 +213,7 @@ export default function App() {
                   onClick={() => setMobileMenuOpen(false)}
                 >
                   <div
-                    className="w-4/5 max-w-sm bg-slate-950 h-full border-l border-slate-900 p-5 overflow-y-auto space-y-6"
+                    className="w-4/5 max-w-sm bg-slate-950 h-full border-l border-slate-900 p-5 overflow-y-auto overscroll-contain space-y-6"
                     onClick={(e) => e.stopPropagation()}
                   >
                     <div className="flex items-center gap-3 pb-4 border-b border-slate-800">
@@ -280,7 +280,7 @@ export default function App() {
             </AnimatePresence>
 
             {/* Central Workstation Content Canvas */}
-            <main className="flex-1 bg-slate-50/50 p-4 md:p-7 overflow-y-auto max-h-[calc(100vh-80px)]">
+            <main className="flex-1 h-full min-h-0 min-w-0 bg-slate-50/50 p-4 md:p-7 overflow-y-auto overscroll-contain">
               <div className="max-w-7xl mx-auto space-y-6 animate-fade-in">
                 {renderActiveSection()}
               </div>
@@ -289,10 +289,10 @@ export default function App() {
         </div>
 
         {/* Standard Corporate Footer */}
-        <footer className="bg-white border-t border-slate-200/80 px-6 py-3.5 text-center text-[10px] text-slate-500 font-semibold font-mono flex flex-col sm:flex-row items-center justify-between gap-2">
+        <footer className="shrink-0 bg-white border-t border-slate-200/80 px-6 py-2.5 text-center text-[10px] text-slate-500 font-semibold font-mono flex flex-col sm:flex-row items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span>{isAr ? "نوفارو ERP السحابي - متصل ومزامن لحظياً" : "Novaro ERP Cloud - Connected & Synchronized"}</span>
+            <span>{isAr ? "نوفارو ERP السحابي - متصل ومزامن لحظياً مع PGlite" : "Novaro ERP Cloud - Connected & Synchronized with PGlite"}</span>
           </div>
           <div>
             {isAr 
