@@ -145,8 +145,8 @@ router.post("/push", async (req: Request, res: Response, next: NextFunction) => 
     // 2. Sync relational master records into PGlite tables (accounts, warehouses, customers, suppliers, items)
     for (const acc of accounts) {
       await pool.query(
-        `INSERT INTO accounts (id, tenant_id, company_id, code, name, name_ar, type, is_postable, is_active, balance)
-         VALUES ($1, 'tenant-novaro-prod', 'comp-novaro-prod', $2, $3, $4, $5, true, true, $6)
+        `INSERT INTO accounts (id, tenant_id, company_id, code, name, name_ar, type, is_active, balance)
+         VALUES ($1, 'tenant-novaro-prod', 'comp-novaro-prod', $2, $3, $4, $5, true, $6)
          ON CONFLICT (id) DO UPDATE SET
            name = EXCLUDED.name,
            name_ar = EXCLUDED.name_ar,

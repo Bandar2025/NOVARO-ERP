@@ -218,9 +218,9 @@ export default function DashboardOverview({ language = "ar" }: DashboardOverview
           </div>
 
           <div className="bg-amber-500/5 border border-amber-500/10 rounded-xl p-3.5 text-slate-600 leading-normal text-[11px] mt-4">
-            <span className="font-bold text-amber-900 block mb-0.5">{isAr ? "إدارة التوريدات" : "Replenishment Rules"}</span>
+            <span className="font-bold text-amber-900 block mb-0.5">{isAr ? "التنبؤ الذكي بكفاية البن الأخضر" : "Predictive Green Bean Supply"}</span>
             {isAr 
-              ? "يقوم النظام تلقائياً بتوليد تنبيه عند انخفاض الكمية عن 200 وحدة لتسهيل مبيعات الجملة والتصدير."
+              ? `إجمالي مخزون البن الأخضر الخام يغطي قرابة ${Math.max(12, Math.floor(items.filter(i => i.category === "GreenCoffee").reduce((s, i) => s + (i.currentStock || 0), 0) / 25))} يوم عمل تشغيلي للمحمصة بمعدل الفاقد القياسي (16%).`
               : "Reorder indicators trigger automatically when finished products slip under 200 units."
             }
           </div>

@@ -10,6 +10,7 @@ import FormField from "./common/FormField";
 import EmptyState from "./common/EmptyState";
 import StatusBadge from "./common/StatusBadge";
 import ZatcaQRModal from "./common/ZatcaQRModal";
+import PrintPreviewModal from "./common/PrintPreviewModal";
 
 interface SalesModuleProps {
   language?: "ar" | "en";
@@ -17,7 +18,7 @@ interface SalesModuleProps {
 
 export default function SalesModule({ language = "ar" }: SalesModuleProps) {
   const isAr = language === "ar";
-  const { customers, salesInvoices, items, addSalesInvoice, zatcaRecords, addToast } = useAppState();
+  const { customers, salesInvoices, items, addSalesInvoice, zatcaRecords, companySettings, addToast } = useAppState();
 
   // Forms
   const [showNewInvoice, setShowNewInvoice] = useState(false);
@@ -405,95 +406,30 @@ export default function SalesModule({ language = "ar" }: SalesModuleProps) {
         />
       )}
 
-      {/* Invoice Preview Modal */}
+      {/* Official A4 & 80mm Print Preview Studio */}
       {selectedInvoice && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-fade-in"
-        >
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-2xl w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-              <div className="flex items-center gap-2">
-                <FileText className="w-5 h-5 text-teal-700" />
-                <h3 className="font-black text-base text-slate-900">
-                  {isAr ? `فاتورة ضريبية #${selectedInvoice.id}` : `Tax Invoice #${selectedInvoice.id}`}
-                </h3>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => window.print()}
-                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-xs flex items-center gap-1.5 transition-colors"
-                >
-                  <Printer className="w-3.5 h-3.5" />
-                  <span>{isAr ? "طباعة الفاتورة" : "Print"}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSelectedInvoice(null)}
-                  className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4 text-xs">
-              <div>
-                <span className="text-slate-400 block">{isAr ? "العميل:" : "Client:"}</span>
-                <span className="font-bold text-slate-800 text-sm">{selectedInvoice.customerName}</span>
-              </div>
-              <div>
-                <span className="text-slate-400 block">{isAr ? "التاريخ:" : "Date:"}</span>
-                <span className="font-mono font-bold text-slate-800">{selectedInvoice.date}</span>
-              </div>
-              <div>
-                <span className="text-slate-400 block">{isAr ? "حالة السداد:" : "Payment Status:"}</span>
-                <StatusBadge status={selectedInvoice.status} language={language} size="sm" />
-              </div>
-              <div>
-                <span className="text-slate-400 block">{isAr ? "نوع المبيعات:" : "Invoice Type:"}</span>
-                <span className="font-bold text-slate-700">{selectedInvoice.type || "Standard"}</span>
-              </div>
-            </div>
-
-            {/* Line items */}
-            <div className="border border-slate-200 rounded-xl overflow-hidden">
-              <table className="w-full text-xs text-right">
-                <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
-                  <tr>
-                    <th className="p-2.5">{isAr ? "الصنف" : "Item"}</th>
-                    <th className="p-2.5 text-center">{isAr ? "الكمية" : "Qty"}</th>
-                    <th className="p-2.5 text-center">{isAr ? "سعر الوحدة" : "Unit Price"}</th>
-                    <th className="p-2.5 text-left font-mono">{isAr ? "المجموع" : "Total"}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {selectedInvoice.items?.map((it: any, i: number) => (
-                    <tr key={i}>
-                      <td className="p-2.5 font-medium text-slate-800">{it.itemName}</td>
-                      <td className="p-2.5 text-center font-mono">{it.quantity}</td>
-                      <td className="p-2.5 text-center font-mono">SAR {Number(it.price).toFixed(2)}</td>
-                      <td className="p-2.5 text-left font-mono font-bold text-teal-800">
-                        SAR {Number(it.total).toFixed(2)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="flex justify-end pt-2 border-t border-slate-100">
-              <div className="text-left font-mono space-y-1">
-                <div className="text-sm font-black text-slate-900">
-                  {isAr ? "المبلغ الإجمالي:" : "Grand Total:"}{" "}
-                  <span className="text-teal-700">SAR {Number(selectedInvoice.totalAmount).toFixed(2)}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <PrintPreviewModal
+          mode="a4_invoice"
+          invoiceData={{
+            id: selectedInvoice.id,
+            date: selectedInvoice.date,
+            customerName: selectedInvoice.customerName,
+            type: selectedInvoice.type || "Wholesale",
+            status: selectedInvoice.status,
+            items: selectedInvoice.items || [],
+            subtotal: selectedInvoice.subtotal,
+            vatAmount: selectedInvoice.taxAmount,
+            totalAmount: selectedInvoice.totalAmount,
+            zatcaRecord: zatcaRecords.find((r) => r.documentId === selectedInvoice.id) || null,
+            companyNameAr: companySettings?.nameAr,
+            companyNameEn: companySettings?.nameEn,
+            companyVat: companySettings?.taxNumber,
+            companyCrn: companySettings?.commercialRegistration,
+            companyAddress: companySettings?.address
+          }}
+          onClose={() => setSelectedInvoice(null)}
+          language={language}
+        />
       )}
 
       {selectedZatcaRecord && (

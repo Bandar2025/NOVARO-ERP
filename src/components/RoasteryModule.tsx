@@ -1,10 +1,11 @@
 import React, { useState } from "react";
 import { useAppState } from "../context/StateContext";
-import { Flame, Plus, Trash2, ShieldAlert, CheckCircle, Coffee, TrendingUp, DollarSign, Calendar, Sliders } from "lucide-react";
+import { Flame, Plus, Trash2, ShieldAlert, CheckCircle, Coffee, TrendingUp, DollarSign, Calendar, Sliders, Printer, Calculator, AlertTriangle } from "lucide-react";
 import ERPTable, { ColumnDef } from "./common/ERPTable";
 import PageHeader from "./common/PageHeader";
 import GlobalActionBar from "./common/GlobalActionBar";
 import ConfirmDialog from "./common/ConfirmDialog";
+import PrintPreviewModal, { PrintableBatchLabelData } from "./common/PrintPreviewModal";
 
 interface RoasteryModuleProps {
   language?: "ar" | "en";
@@ -16,8 +17,18 @@ export default function RoasteryModule({ language = "ar" }: RoasteryModuleProps)
     roasteryExpenses, addRoasteryExpense, deleteRoasteryExpense, roastingJobs, addRoastingJob, items, addToast, addAuditLog 
   } = useAppState();
 
-  const [activeTab, setActiveTab] = useState<"production" | "expenses" | "costing">("production");
+  const [activeTab, setActiveTab] = useState<"production" | "expenses" | "costing" | "simulator">("production");
   const [deleteExpenseId, setDeleteExpenseId] = useState<string | null>(null);
+  const [selectedBatchLabel, setSelectedBatchLabel] = useState<PrintableBatchLabelData | null>(null);
+
+  // Blend & Roast Margin Simulator State
+  const [simGreenCostPerKg, setSimGreenCostPerKg] = useState<number>(28);
+  const [simWeightLossPct, setSimWeightLossPct] = useState<number>(16);
+  const [simGasAndLaborPerKg, setSimGasAndLaborPerKg] = useState<number>(3.5);
+  const [simPackagingCostPerKg, setSimPackagingCostPerKg] = useState<number>(4.2);
+  const [simWholesaleMarginPct, setSimWholesaleMarginPct] = useState<number>(28);
+  const [simCafeMarginPct, setSimCafeMarginPct] = useState<number>(42);
+  const [simRetailMarginPct, setSimRetailMarginPct] = useState<number>(55);
 
   // Roasting Job Form State
   const [recipeId, setRecipeId] = useState("");
@@ -157,7 +168,34 @@ export default function RoasteryModule({ language = "ar" }: RoasteryModuleProps)
       }
     },
     { key: "roastProfile", header: "درجة التحميص", headerEn: "Profile" },
-    { key: "operator", header: "المسؤول", headerEn: "Operator" }
+    { key: "operator", header: "المسؤول", headerEn: "Operator" },
+    {
+      key: "printLabel",
+      header: "ملصق الباركود",
+      headerEn: "Batch Label",
+      sortable: false,
+      render: (_, row) => (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setSelectedBatchLabel({
+              batchId: row.batchId || row.id || "BAT-RST-101",
+              productNameAr: row.roastedItemName || row.greenItemName || "بن نوفارو محمص",
+              roastProfile: row.roastProfile || "Medium",
+              weightKg: row.roastedQty || 50,
+              roastDate: row.date || new Date().toISOString().split("T")[0],
+              expiryDate: "2026-10-30",
+              operator: row.operator || "أبو فهد"
+            });
+          }}
+          className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-amber-700 text-white text-[11px] font-bold flex items-center gap-1 transition-colors"
+        >
+          <Printer className="w-3 h-3" />
+          <span>{isAr ? "ملصق الدفعة" : "Print Label"}</span>
+        </button>
+      )
+    }
   ];
 
   const expenseColumns: ColumnDef[] = [
@@ -246,6 +284,17 @@ export default function RoasteryModule({ language = "ar" }: RoasteryModuleProps)
           }`}
         >
           {isAr ? "حساب التكاليف والإنتاج" : "Roastery Cost Sheet"}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab("simulator")}
+          className={`px-3.5 py-2 rounded-lg transition-all flex items-center gap-1.5 ${
+            activeTab === "simulator" ? "bg-white text-amber-800 shadow-xs border border-amber-300" : "text-slate-500 hover:text-slate-800"
+          }`}
+        >
+          <Calculator className="w-3.5 h-3.5 text-amber-600" />
+          <span>{isAr ? "محاكي تسعير الخلطات والتنبؤ بالمخزون" : "Margin Simulator & Predictive BI"}</span>
         </button>
       </div>
 
@@ -472,6 +521,230 @@ export default function RoasteryModule({ language = "ar" }: RoasteryModuleProps)
             </div>
           </div>
         </div>
+      )}
+
+      {/* Simulator & Predictive Analytics Tab */}
+      {activeTab === "simulator" && (() => {
+        const netYieldFactor = Math.max(0.5, (100 - simWeightLossPct) / 100);
+        const effectiveBeanCostPerRoastedKg = simGreenCostPerKg / netYieldFactor;
+        const totalNetCostPerKg = effectiveBeanCostPerRoastedKg + simGasAndLaborPerKg + simPackagingCostPerKg;
+        const wholesalePrice = totalNetCostPerKg / (1 - simWholesaleMarginPct / 100);
+        const cafeB2BPrice = totalNetCostPerKg / (1 - simCafeMarginPct / 100);
+        const retailPrice = totalNetCostPerKg / (1 - simRetailMarginPct / 100);
+        const dailyGreenBurnRate = Math.max(15, Math.round((totalGreenUsed || 180) / 7));
+
+        return (
+          <div className="space-y-6">
+            {/* Blend & Roast Margin Simulator */}
+            <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs space-y-5">
+              <div className="border-b border-slate-100 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-base flex items-center gap-2">
+                    <Calculator className="w-5 h-5 text-amber-600" />
+                    {isAr ? "محاكي تكلفة التحميص وتسعير الخلطات (Roast & Blend Margin Simulator)" : "Roast & Blend Pricing Simulator"}
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {isAr
+                      ? "احسب تكلفة الكيلو الصافي بعد الفاقد الحراري والتعبئة وحدد السعر الأمثل للجملة والمقاهي والتجزئة."
+                      : "Calculate net roasted cost per kg after moisture weight loss and packaging, and simulate target channel prices."}
+                  </p>
+                </div>
+                <span className="px-3 py-1 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 font-mono text-xs font-bold">
+                  Yield: {(netYieldFactor * 100).toFixed(1)}%
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
+                <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200">
+                  <label className="font-bold text-slate-600 block mb-1">
+                    {isAr ? "تكلفة كيلو البن الأخضر (SAR)" : "Green Bean Cost / kg (SAR)"}
+                  </label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    value={simGreenCostPerKg}
+                    onChange={(e) => setSimGreenCostPerKg(parseFloat(e.target.value) || 0)}
+                    className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg font-mono font-bold text-sm"
+                  />
+                </div>
+
+                <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200">
+                  <label className="font-bold text-slate-600 block mb-1">
+                    {isAr ? "نسبة الفاقد الحراري بالتحميص (%)" : "Roast Shrinkage / Weight Loss (%)"}
+                  </label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="5"
+                    max="30"
+                    value={simWeightLossPct}
+                    onChange={(e) => setSimWeightLossPct(parseFloat(e.target.value) || 0)}
+                    className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg font-mono font-bold text-sm text-amber-700"
+                  />
+                </div>
+
+                <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200">
+                  <label className="font-bold text-slate-600 block mb-1">
+                    {isAr ? "تكلفة الغاز والتشغيل للكيلو (SAR)" : "Direct Gas & Labor / kg (SAR)"}
+                  </label>
+                  <input
+                    type="number"
+                    step="0.25"
+                    value={simGasAndLaborPerKg}
+                    onChange={(e) => setSimGasAndLaborPerKg(parseFloat(e.target.value) || 0)}
+                    className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg font-mono font-bold text-sm"
+                  />
+                </div>
+
+                <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200">
+                  <label className="font-bold text-slate-600 block mb-1">
+                    {isAr ? "تكلفة الأكياس والصمام والملصق (SAR)" : "Bag, Valve & Label / kg (SAR)"}
+                  </label>
+                  <input
+                    type="number"
+                    step="0.25"
+                    value={simPackagingCostPerKg}
+                    onChange={(e) => setSimPackagingCostPerKg(parseFloat(e.target.value) || 0)}
+                    className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg font-mono font-bold text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* Cost Breakdown & Recommended Channel Pricing */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="p-4 bg-slate-900 text-white rounded-xl space-y-1">
+                  <span className="text-[11px] text-slate-400 font-bold block">
+                    {isAr ? "التكلفة الصافية للكيلو المحمص والمعبأ" : "Net Packed Roasted Cost / kg"}
+                  </span>
+                  <div className="text-2xl font-black font-mono text-amber-400">
+                    SAR {totalNetCostPerKg.toFixed(2)}
+                  </div>
+                  <span className="text-[10px] text-slate-400 font-mono block">
+                    {isAr ? `منها بن صافي بعد الفقد: SAR ${effectiveBeanCostPerRoastedKg.toFixed(2)}` : `Bean after loss: SAR ${effectiveBeanCostPerRoastedKg.toFixed(2)}`}
+                  </span>
+                </div>
+
+                <div className="p-4 bg-teal-50/70 border border-teal-200 rounded-xl space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-teal-900">{isAr ? "سعر الجملة المقترح" : "Wholesale Price"}</span>
+                    <span className="text-[11px] font-mono font-bold text-teal-700">Margin {simWholesaleMarginPct}%</span>
+                  </div>
+                  <div className="text-xl font-black font-mono text-teal-800">
+                    SAR {wholesalePrice.toFixed(2)} <span className="text-[10px] font-normal">/ kg</span>
+                  </div>
+                  <div className="text-[11px] text-teal-700 font-mono">
+                    {isAr ? `صافي الربح للكيلو: SAR ${(wholesalePrice - totalNetCostPerKg).toFixed(2)}` : `Profit: SAR ${(wholesalePrice - totalNetCostPerKg).toFixed(2)}`}
+                  </div>
+                </div>
+
+                <div className="p-4 bg-indigo-50/70 border border-indigo-200 rounded-xl space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-indigo-900">{isAr ? "سعر المقاهي والفنادق (B2B)" : "Cafes & HoReCa (B2B)"}</span>
+                    <span className="text-[11px] font-mono font-bold text-indigo-700">Margin {simCafeMarginPct}%</span>
+                  </div>
+                  <div className="text-xl font-black font-mono text-indigo-800">
+                    SAR {cafeB2BPrice.toFixed(2)} <span className="text-[10px] font-normal">/ kg</span>
+                  </div>
+                  <div className="text-[11px] text-indigo-700 font-mono">
+                    {isAr ? `صافي الربح للكيلو: SAR ${(cafeB2BPrice - totalNetCostPerKg).toFixed(2)}` : `Profit: SAR ${(cafeB2BPrice - totalNetCostPerKg).toFixed(2)}`}
+                  </div>
+                </div>
+
+                <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-xl space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-emerald-900">{isAr ? "سعر التجزئة والكاشير (POS)" : "Retail & POS Price"}</span>
+                    <span className="text-[11px] font-mono font-bold text-emerald-700">Margin {simRetailMarginPct}%</span>
+                  </div>
+                  <div className="text-xl font-black font-mono text-emerald-800">
+                    SAR {retailPrice.toFixed(2)} <span className="text-[10px] font-normal">/ kg</span>
+                  </div>
+                  <div className="text-[11px] text-emerald-700 font-mono">
+                    {isAr ? `سعر كيس 250g: SAR ${(retailPrice * 0.27).toFixed(2)}` : `250g Pouch: SAR ${(retailPrice * 0.27).toFixed(2)}`}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Predictive Green Bean Burn-Rate & Replenishment Table */}
+            <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs space-y-4">
+              <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
+                    <TrendingUp className="w-4 h-4 text-teal-700" />
+                    {isAr ? "التنبؤ بمعدل استهلاك البن الأخضر وأيام الكفاية (Predictive Burn-Rate)" : "Predictive Green Bean Burn-Rate & Days of Supply"}
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {isAr
+                      ? `معدل السحب اليومي التقديري للمحمصة: ${dailyGreenBurnRate} كجم/يوم بناءً على وجبات التحميص الفعلي.`
+                      : `Estimated daily roastery consumption: ${dailyGreenBurnRate} kg/day based on active roasting batches.`}
+                  </p>
+                </div>
+              </div>
+
+              <div className="border border-slate-200 rounded-xl overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-50 text-slate-600 border-b border-slate-200">
+                    <tr>
+                      <th className="py-2.5 px-3 text-right">{isAr ? "صنف البن الأخضر الخام" : "Green Coffee Origin"}</th>
+                      <th className="py-2.5 px-3 text-center">{isAr ? "الرصيد الحالي (كجم)" : "Current Stock (kg)"}</th>
+                      <th className="py-2.5 px-3 text-center">{isAr ? "معدل السحب اليومي" : "Daily Burn Rate"}</th>
+                      <th className="py-2.5 px-3 text-center">{isAr ? "أيام الكفاية المتبقية" : "Days of Supply"}</th>
+                      <th className="py-2.5 px-3 text-center">{isAr ? "كمية الشراء المقترحة (30 يوم)" : "Suggested 30d Order"}</th>
+                      <th className="py-2.5 px-3 text-center">{isAr ? "حالة التوريد" : "Replenishment Status"}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {greenBeans.map((bean) => {
+                      const itemBurn = Math.max(8, Math.round(dailyGreenBurnRate / Math.max(1, greenBeans.length)));
+                      const daysRemaining = Math.floor((bean.currentStock || 0) / itemBurn);
+                      const suggestedOrder = Math.max(0, itemBurn * 30 - (bean.currentStock || 0));
+                      return (
+                        <tr key={bean.id} className="hover:bg-slate-50">
+                          <td className="py-2.5 px-3 font-bold text-slate-900">{isAr ? bean.nameAr : bean.name}</td>
+                          <td className="py-2.5 px-3 text-center font-mono font-bold">{bean.currentStock} kg</td>
+                          <td className="py-2.5 px-3 text-center font-mono text-slate-600">{itemBurn} kg/day</td>
+                          <td className="py-2.5 px-3 text-center font-mono font-black text-teal-800">
+                            {daysRemaining} {isAr ? "يوم" : "days"}
+                          </td>
+                          <td className="py-2.5 px-3 text-center font-mono font-bold text-amber-800">
+                            {suggestedOrder > 0 ? `${suggestedOrder} kg` : "—"}
+                          </td>
+                          <td className="py-2.5 px-3 text-center">
+                            <span
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                daysRemaining < 14
+                                  ? "bg-rose-50 text-rose-700 border border-rose-200"
+                                  : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                              }`}
+                            >
+                              {daysRemaining < 14
+                                ? isAr
+                                  ? "يتطلب طلب شراء مبكر"
+                                  : "Reorder Recommended"
+                                : isAr
+                                ? "مخزون آمن ومستقر"
+                                : "Healthy Supply"}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Batch Barcode Print Studio Modal */}
+      {selectedBatchLabel && (
+        <PrintPreviewModal
+          mode="batch_label"
+          batchData={selectedBatchLabel}
+          onClose={() => setSelectedBatchLabel(null)}
+          language={language}
+        />
       )}
 
       {/* Delete Expense Confirm Dialog */}

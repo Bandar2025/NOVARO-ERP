@@ -8,6 +8,7 @@ import {
 import PageHeader from "./common/PageHeader";
 import GlobalActionBar from "./common/GlobalActionBar";
 import ZatcaQRModal from "./common/ZatcaQRModal";
+import PrintPreviewModal from "./common/PrintPreviewModal";
 
 interface CartItem {
   item: Item;
@@ -28,11 +29,13 @@ export default function PosModule({ language = "ar" }: PosModuleProps) {
     posSessions,
     openPOSSession,
     closePOSSession,
-    zatcaRecords
+    zatcaRecords,
+    companySettings
   } = useAppState();
   const [cart, setCart] = useState<CartItem[]>([]);
   const [cashier] = useState(currentUser?.username || (isAr ? "صالح الكاشير" : "Saleh Cashier"));
   const [selectedZatcaRecord, setSelectedZatcaRecord] = useState<ZatcaDocumentRecord | null>(null);
+  const [showPrintStudio, setShowPrintStudio] = useState(false);
   const [actualCashCounted, setActualCashCounted] = useState<string>("");
   const [showCloseShiftModal, setShowCloseShiftModal] = useState(false);
 
@@ -161,7 +164,7 @@ export default function PosModule({ language = "ar" }: PosModuleProps) {
 
   const printReceipt = () => {
     if (!lastReceipt) return;
-    window.print();
+    setShowPrintStudio(true);
   };
 
   const handleCloseShift = (e: React.FormEvent) => {
@@ -510,6 +513,31 @@ export default function PosModule({ language = "ar" }: PosModuleProps) {
             </div>
           </form>
         </div>
+      )}
+
+      {showPrintStudio && lastReceipt && (
+        <PrintPreviewModal
+          mode="thermal_80mm"
+          invoiceData={{
+            id: lastReceipt.invoiceId,
+            date: lastReceipt.date,
+            customerName: isAr ? "عميل نقدي مبيعات عامة" : "Cash Walk-In Client",
+            type: "POS",
+            status: "Paid",
+            items: lastReceipt.items,
+            subtotal: lastReceipt.subtotal,
+            vatAmount: lastReceipt.vat,
+            totalAmount: lastReceipt.total,
+            zatcaRecord: zatcaRecords.find((r) => r.documentId === lastReceipt.invoiceId) || null,
+            companyNameAr: companySettings?.nameAr,
+            companyNameEn: companySettings?.nameEn,
+            companyVat: companySettings?.taxNumber,
+            companyCrn: companySettings?.commercialRegistration,
+            companyAddress: companySettings?.address
+          }}
+          onClose={() => setShowPrintStudio(false)}
+          language={language}
+        />
       )}
 
       {selectedZatcaRecord && (

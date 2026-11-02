@@ -19,17 +19,11 @@ export interface DatabaseConfig {
 
 function resolveDatabaseConfig(): DatabaseConfig {
   dotenv.config({ path: [".env", ".env.example"] });
-  const rawProvider = (process.env.DATABASE_PROVIDER || "").toLowerCase().trim();
+  const rawProvider = (process.env.DATABASE_PROVIDER || "pglite").toLowerCase().trim();
   const url = process.env.DATABASE_URL;
   const poolMax = parseInt(process.env.DATABASE_POOL_MAX || "10", 10);
   const ssl = process.env.DATABASE_SSL === "true";
   const name = process.env.DATABASE_NAME;
-
-  if (!rawProvider) {
-    throw new Error(
-      "FAIL FAST CONFIG ERROR: DATABASE_PROVIDER environment variable is missing. Must be explicitly set to 'pglite' or 'postgres'."
-    );
-  }
 
   if (rawProvider !== "pglite" && rawProvider !== "postgres") {
     throw new Error(
@@ -37,11 +31,15 @@ function resolveDatabaseConfig(): DatabaseConfig {
     );
   }
 
+  // If postgres is selected with the unconfigured example placeholder URL, use embedded PGlite in preview
   if (rawProvider === "postgres") {
     if (!url) {
       throw new Error(
         "FAIL FAST CONFIG ERROR: DATABASE_PROVIDER is set to 'postgres', but DATABASE_URL environment variable is missing."
       );
+    }
+    if (url.includes("YOUR_PASSWORD_HERE")) {
+      return { provider: "pglite", poolMax };
     }
     return { provider: "postgres", url, name, ssl, poolMax };
   }

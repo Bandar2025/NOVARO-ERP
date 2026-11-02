@@ -304,11 +304,43 @@ export default function TreasuryBanksModule({
               />
             </div>
 
-            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
-              <span className="font-bold text-slate-500 block">{isAr ? "فروقات المطابقة:" : "Reconciliation Variance:"}</span>
-              <span className={`text-lg font-black font-mono mt-1 block ${discrepancy === 0 ? "text-emerald-700" : "text-rose-700"}`}>
-                SAR {discrepancy.toFixed(2)} {discrepancy === 0 ? "✓ متطابق" : "⚠️ فرق"}
-              </span>
+            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 flex flex-col justify-between">
+              <div>
+                <span className="font-bold text-slate-500 block">{isAr ? "فروقات المطابقة:" : "Reconciliation Variance:"}</span>
+                <span className={`text-lg font-black font-mono mt-1 block ${discrepancy === 0 ? "text-emerald-700" : "text-rose-700"}`}>
+                  SAR {discrepancy.toFixed(2)} {discrepancy === 0 ? "✓ متطابق" : "⚠️ فرق"}
+                </span>
+              </div>
+              {discrepancy !== 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const isDeposit = discrepancy > 0;
+                    const absDiff = Math.abs(discrepancy);
+                    const res = addBankTransaction(
+                      {
+                        date: new Date().toISOString().split("T")[0],
+                        type: isDeposit ? "Deposit" : "Withdrawal",
+                        amount: absDiff,
+                        description: isDeposit
+                          ? "تسوية إيداع/فوائد بنكية من كشف الحساب"
+                          : "تسوية عمولات ومصروفات بنكية من كشف الحساب",
+                        accountName: "Al-Rajhi Bank"
+                      },
+                      "acc-5300"
+                    );
+                    if (res.success) {
+                      addToast({
+                        type: "success",
+                        message: `تم ترحيل قيد تسوية الفروقات البنكية بقيمة SAR ${absDiff.toFixed(2)} ومطابقة الرصيد بنجاح!`
+                      });
+                    }
+                  }}
+                  className="mt-2 px-3 py-1.5 rounded-lg bg-teal-700 hover:bg-teal-800 text-white text-[11px] font-bold transition-colors cursor-pointer"
+                >
+                  {isAr ? "ترحيل قيد تسوية الفرق تلقائياً" : "Auto-Post Variance Adjustment"}
+                </button>
+              )}
             </div>
           </div>
 
