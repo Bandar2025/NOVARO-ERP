@@ -29,6 +29,7 @@ export interface UnifiedInvoicePrintPayload {
   companyVat?: string;
   companyCrn?: string;
   companyAddress?: string;
+  forceSimulationWatermark?: boolean;
 }
 
 export interface UnifiedBatchPrintPayload {
@@ -44,22 +45,148 @@ export interface UnifiedBatchPrintPayload {
   sku?: string;
 }
 
+/**
+ * ISO/IEC 15417 Code-128 Official Symbol Patterns (Values 0 to 106)
+ * Values 0..105 have 6 elements summing to 11 modules.
+ * Stop character (106) has 7 elements summing to 13 modules.
+ */
+const CODE128_PATTERNS: readonly string[] = [
+  "212222", "222122", "222221", "121223", "121322", "131222", "122213", "122312",
+  "132212", "221213", "221312", "231212", "112232", "122132", "122231", "113222",
+  "123122", "123221", "223211", "221132", "221231", "213212", "223112", "312131",
+  "311222", "321122", "321221", "312212", "322112", "322211", "212123", "212321",
+  "232121", "111323", "131123", "131321", "112313", "132113", "132311", "211313",
+  "231113", "231311", "112133", "112331", "132131", "113123", "113321", "133121",
+  "313121", "211331", "231131", "213113", "213311", "213131", "311123", "311321",
+  "331121", "312113", "312311", "332111", "314111", "221411", "431111", "111224",
+  "111422", "121124", "121421", "141122", "141221", "112214", "112412", "122114",
+  "122411", "142112", "142211", "241211", "221114", "413111", "241112", "134111",
+  "111242", "121142", "121241", "114212", "124112", "124211", "411212", "421112",
+  "421211", "212141", "214121", "412121", "111143", "111341", "131141", "114113",
+  "114311", "411113", "411311", "113141", "114131", "311141", "411131", "211412",
+  "211214", "211232", "2331112"
+];
+
+export interface Code128EncodedResult {
+  text: string;
+  startCode: number;
+  dataValues: number[];
+  checksumValue: number;
+  stopCode: number;
+  bars: number[];
+  totalModules: number;
+  isValidCode128B: boolean;
+}
+
+export interface TaxIdentityValidationResult {
+  isOfficialProductionReady: boolean;
+  isSimulationOrTrial: boolean;
+  vatNumber: string;
+  reasonAr?: string;
+  reasonEn?: string;
+}
+
+const DEMO_VAT_NUMBERS = new Set(["310123456700003", "300000000000003", "000000000000000"]);
+
 export class UnifiedPrintEngine {
   /**
-   * Generates deterministic Code-128 style bar widths from any string
+   * Encodes an ASCII string into an ISO/IEC 15417 compliant Code-128 Set B symbol
+   * including Start Code B (104), Modulo 103 weighted checksum, and Stop Pattern (106).
+   */
+  static encodeCode128B(rawText: string): Code128EncodedResult {
+    const sanitized = (rawText || "NOVARO-BATCH")
+      .split("")
+      .filter((ch) => {
+        const code = ch.charCodeAt(0);
+        return code >= 32 && code <= 126;
+      })
+      .join("");
+
+    const text = sanitized.length > 0 ? sanitized : "NOVARO-BATCH";
+    const startCode = 104; // Start Code B
+    const stopCode = 106; // Stop Pattern
+
+    const dataValues: number[] = [];
+    let weightedSum = startCode;
+
+    for (let i = 0; i < text.length; i++) {
+      const val = text.charCodeAt(i) - 32;
+      dataValues.push(val);
+      weightedSum += val * (i + 1);
+    }
+
+    const checksumValue = weightedSum % 103;
+    const allSymbolIndices = [startCode, ...dataValues, checksumValue, stopCode];
+
+    const bars: number[] = [];
+    for (const symIdx of allSymbolIndices) {
+      const pattern = CODE128_PATTERNS[symIdx] || CODE128_PATTERNS[0];
+      for (let j = 0; j < pattern.length; j++) {
+        bars.push(Number(pattern[j]));
+      }
+    }
+
+    const totalModules = bars.reduce((sum, w) => sum + w, 0);
+    // Expected modules: (text.length + 2) * 11 + 13
+    const expectedModules = (text.length + 2) * 11 + 13;
+
+    return {
+      text,
+      startCode,
+      dataValues,
+      checksumValue,
+      stopCode,
+      bars,
+      totalModules,
+      isValidCode128B: totalModules === expectedModules
+    };
+  }
+
+  /**
+   * Generates ISO/IEC 15417 Code-128 Set B bar/space widths with Modulo 103 checksum
    */
   static generateLinearBarcodeBars(code: string): number[] {
-    const clean = (code || "NOVARO-BATCH").toUpperCase();
-    const bars: number[] = [2, 1, 1, 2, 3, 1]; // Start pattern
-    for (let i = 0; i < clean.length; i++) {
-      const charCode = clean.charCodeAt(i);
-      bars.push(((charCode >> 0) & 3) + 1);
-      bars.push(((charCode >> 2) & 2) + 1);
-      bars.push(((charCode >> 4) & 3) + 1);
-      bars.push(1);
+    return this.encodeCode128B(code).bars;
+  }
+
+  /**
+   * Validates whether the company tax identity is production-complete or in simulation/trial mode.
+   */
+  static validateTaxIdentity(invoice?: UnifiedInvoicePrintPayload | null): TaxIdentityValidationResult {
+    if (!invoice) {
+      return {
+        isOfficialProductionReady: false,
+        isSimulationOrTrial: true,
+        vatNumber: "",
+        reasonAr: "لا توجد بيانات فاتورة مكتملة",
+        reasonEn: "Missing invoice payload"
+      };
     }
-    bars.push(2, 3, 1, 1, 2); // Stop pattern
-    return bars;
+
+    const vat = (invoice.companyVat || "").trim();
+    const is15DigitZatcaVat = /^3\d{13}3$/.test(vat);
+    const isDemoVat = !vat || DEMO_VAT_NUMBERS.has(vat);
+    const isForcedSim = Boolean(invoice.forceSimulationWatermark);
+
+    if (isForcedSim || isDemoVat || !is15DigitZatcaVat) {
+      return {
+        isOfficialProductionReady: false,
+        isSimulationOrTrial: true,
+        vatNumber: vat || "310123456700003",
+        reasonAr: isDemoVat
+          ? "الرقم الضريبي للمنشأة افتراضي/تجريبي (310123456700003) - يُطبع المستند بختم مسودة تجريبية/محاكاة"
+          : "الرقم الضريبي للمنشأة غير مكتمل (يجب أن يتكون من 15 رقماً يبدأ وينتهي بالرقم 3)",
+        reasonEn: isDemoVat
+          ? "Company VAT number is a default trial value — document is marked as a Simulation Draft"
+          : "Company VAT number is incomplete (must be 15 digits starting and ending with 3)"
+      };
+    }
+
+    return {
+      isOfficialProductionReady: true,
+      isSimulationOrTrial: false,
+      vatNumber: vat
+    };
   }
 
   /**
@@ -79,20 +206,21 @@ export class UnifiedPrintEngine {
   }
 
   /**
-   * Renders a linear Code-128 style barcode into an inline SVG string
+   * Renders an ISO/IEC 15417 Code-128B barcode into an inline SVG string with quiet zones
    */
   static renderBarcodeSvgString(code: string, heightPx = 44): string {
-    const bars = this.generateLinearBarcodeBars(code);
-    const totalWidth = bars.reduce((a, b) => a + b, 0);
-    let x = 0;
+    const encoded = this.encodeCode128B(code);
+    const quietZone = 10;
+    const totalWidth = encoded.totalModules + quietZone * 2;
+    let x = quietZone;
     let rects = "";
-    bars.forEach((w, idx) => {
+    encoded.bars.forEach((w, idx) => {
       if (idx % 2 === 0) {
         rects += `<rect x="${x}" y="0" width="${w}" height="${heightPx}" fill="#0f172a"/>`;
       }
       x += w;
     });
-    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalWidth} ${heightPx}" style="width:100%;height:${heightPx}px" preserveAspectRatio="none">${rects}</svg>`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalWidth} ${heightPx}" data-barcode-standard="ISO-15417-CODE128B" data-checksum-mod103="${encoded.checksumValue}" style="width:100%;height:${heightPx}px" preserveAspectRatio="none">${rects}</svg>`;
   }
 
   /**
@@ -164,6 +292,7 @@ export class UnifiedPrintEngine {
       );
       const qrSvg = this.renderQrSvgString(qrMatrix, 74);
       const barcodeSvg = this.renderBarcodeSvgString(batchData.batchId, 38);
+      const encoded128 = this.encodeCode128B(batchData.batchId);
 
       return `<!DOCTYPE html>
 <html lang="${isRtl ? "ar" : "en"}" dir="${dir}">
@@ -200,7 +329,7 @@ export class UnifiedPrintEngine {
     <div class="ftr">
       <div style="flex:1;text-align:center;">
         ${barcodeSvg}
-        <div style="font-family:monospace;font-size:10px;font-weight:900;letter-spacing:2px;">*${batchData.batchId}*</div>
+        <div style="font-family:monospace;font-size:10px;font-weight:900;letter-spacing:1.5px;">${encoded128.text} (CHK:${encoded128.checksumValue})</div>
       </div>
       <div style="border:1px solid #0f172a;padding:3px;border-radius:4px;">${qrSvg}</div>
     </div>
@@ -211,6 +340,7 @@ export class UnifiedPrintEngine {
 
     if (!invoiceData) return "<html><body>No Print Data</body></html>";
 
+    const taxValidation = this.validateTaxIdentity(invoiceData);
     const { subtotal, vatAmount, totalAmount, tlvPayload } = this.computeInvoiceTotals(invoiceData);
     const qrMatrix = ZatcaEngine.generateQrMatrix(tlvPayload);
     const sellerNameAr = invoiceData.companyNameAr || "شركة محامص وبن نوفارو المحدودة";
@@ -222,6 +352,16 @@ export class UnifiedPrintEngine {
       (isRtl
         ? "الدمام - المدينة الصناعية الثانية، المملكة العربية السعودية"
         : "Dammam 2nd Industrial City, Kingdom of Saudi Arabia");
+
+    const simulationBannerHtml = taxValidation.isSimulationOrTrial
+      ? `<div style="background:#fef3c7;border:2px dashed #d97706;color:#92400e;padding:8px 12px;border-radius:8px;margin-bottom:10px;text-align:center;font-weight:900;font-size:11px;">
+           ⚠️ ${
+             languageMode === "en"
+               ? "SIMULATION / TRIAL DRAFT — NOT VALID AS AN OFFICIAL ZATCA TAX INVOICE"
+               : "مسودة تجريبية / محاكاة — غير صالحة كفاتورة ضريبية رسمية (بيانات المنشأة الضريبية تجريبية)"
+           }
+         </div>`
+      : "";
 
     if (format === "thermal_80mm") {
       const qrSvg = this.renderQrSvgString(qrMatrix, 118);
@@ -244,13 +384,14 @@ export class UnifiedPrintEngine {
   <style>
     ${pageCss}
     * { box-sizing: border-box; }
-    .receipt { padding: 6px; color: #0f172a; font-size: 11px; }
+    .receipt { padding: 6px; color: #0f172a; font-size: 11px; position: relative; }
     .dashed { border-bottom: 1px dashed #64748b; padding-bottom: 6px; margin-bottom: 6px; }
     table { width: 100%; border-collapse: collapse; font-size: 11px; }
   </style>
 </head>
 <body>
   <div class="receipt">
+    ${simulationBannerHtml}
     <div class="dashed" style="text-align:center;">
       <div style="font-size:13px;font-weight:900;">${languageMode === "en" ? sellerNameEn : sellerNameAr}</div>
       ${languageMode === "bilingual" ? `<div style="font-size:10px;color:#475569;">${sellerNameEn}</div>` : ""}
@@ -319,7 +460,7 @@ export class UnifiedPrintEngine {
   <style>
     ${pageCss}
     * { box-sizing: border-box; }
-    .inv-wrapper { padding: 12px; color: #0f172a; }
+    .inv-wrapper { padding: 12px; color: #0f172a; position: relative; }
     .top-bar { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #0f172a; padding-bottom: 14px; margin-bottom: 16px; }
     .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 10px; padding: 12px; margin-bottom: 16px; font-size: 12px; }
     table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 16px; }
@@ -329,6 +470,7 @@ export class UnifiedPrintEngine {
 </head>
 <body>
   <div class="inv-wrapper">
+    ${simulationBannerHtml}
     <div class="top-bar">
       <div>
         <div style="font-size:18px;font-weight:900;">${languageMode === "en" ? sellerNameEn : sellerNameAr}</div>
@@ -397,8 +539,16 @@ export class UnifiedPrintEngine {
       <div style="display:flex;align-items:center;gap:12px;background:#f8fafc;border:1px solid #cbd5e1;padding:10px;border-radius:10px;">
         <div style="border:2px solid #0f172a;padding:4px;background:#fff;border-radius:6px;">${qrSvg}</div>
         <div style="font-size:10px;font-family:monospace;overflow:hidden;">
-          <div style="font-weight:900;color:#047857;font-family:sans-serif;font-size:11px;">
-            ${isRtl ? "✓ مختوم إلكترونياً (ZATCA Phase 2)" : "✓ ZATCA Phase 2 Cryptographic Stamp"}
+          <div style="font-weight:900;color:${taxValidation.isSimulationOrTrial ? "#b45309" : "#047857"};font-family:sans-serif;font-size:11px;">
+            ${
+              taxValidation.isSimulationOrTrial
+                ? isRtl
+                  ? "⚠️ ختم محاكاة تجريبي (Simulation Stamp)"
+                  : "⚠️ ZATCA Phase 2 Simulation Stamp"
+                : isRtl
+                ? "✓ مختوم إلكترونياً (ZATCA Phase 2)"
+                : "✓ ZATCA Phase 2 Cryptographic Stamp"
+            }
           </div>
           <div style="margin-top:3px;word-break:break-all;">UUID: ${invoiceData.zatcaRecord?.uuid || "8e600000-4a11-4b22-9c33-novaro2025"}</div>
           <div style="margin-top:3px;color:#64748b;word-break:break-all;">SHA256: ${(invoiceData.zatcaRecord?.invoiceHash || tlvPayload).slice(0, 44)}...</div>

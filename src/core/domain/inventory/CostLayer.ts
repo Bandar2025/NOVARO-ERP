@@ -6,11 +6,18 @@ export interface CostLayer {
   itemId: string;
   warehouseId: string;
   batchNumber: string;
-  dateReceived: string;
-  originalQuantity: number;
+  dateReceived?: string;
+  originalQuantity?: number;
   remainingQuantity: number;
   unitCost: number;
-  sourceReference: string;
+  sourceReference?: string;
+  batchId?: string;
+  receivedDate?: string;
+  initialQuantity?: number;
+  currency?: string;
+  isExhausted?: boolean;
+  sourceDocumentType?: string;
+  sourceDocumentId?: string;
 }
 
 export interface FIFOConsumptionResult {
@@ -44,7 +51,7 @@ export class FIFOCostLayerQueue {
     // Filter relevant layers sorted chronologically by receipt date
     const relevantLayers = layers
       .filter(l => l.itemId === itemId && (!warehouseId || l.warehouseId === warehouseId) && l.remainingQuantity > 0)
-      .sort((a, b) => new Date(a.dateReceived).getTime() - new Date(b.dateReceived).getTime());
+      .sort((a, b) => new Date(a.dateReceived || a.receivedDate || "").getTime() - new Date(b.dateReceived || b.receivedDate || "").getTime());
 
     const updatedLayers = layers.map(layer => {
       // If not matching or already consumed

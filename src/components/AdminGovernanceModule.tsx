@@ -356,17 +356,17 @@ export default function AdminGovernanceModule({ initialTab = "admin_sync_status"
       <PageHeader
         title="إدارة النظام والحوكمة والرقابة والتدقيق"
         titleEn="System Governance, Security, Fiscal Locks & Master Certification"
-        subtitle="إعدادات المنشأة، الفروع، قفل الفترات المالية، مصفوفة الصلاحيات RBAC، التسلسل الرقمي، النسخ الاحتياطي، ومزامنة PGlite"
-        subtitleEn="Enterprise Configuration, Fiscal Period Locks, RBAC Matrix, Document Numbering, Audit Log & PGlite Sync"
+        description="إعدادات المنشأة، الفروع، قفل الفترات المالية، مصفوفة الصلاحيات RBAC، التسلسل الرقمي، النسخ الاحتياطي، ومزامنة PGlite"
+        descriptionEn="Enterprise Configuration, Fiscal Period Locks, RBAC Matrix, Document Numbering, Audit Log & PGlite Sync"
         language={language}
       />
 
       <GlobalActionBar
         language={language}
-         primaryActions={[
+        extraActions={[
           {
             id: "run-cert",
-            label: "تشغيل فحص الاعتماد الشامل (23 اختبار)",
+            labelAr: "تشغيل فحص الاعتماد الشامل (23 اختبار)",
             labelEn: "Run Master Certification",
             icon: Play,
             onClick: () => {
@@ -377,7 +377,7 @@ export default function AdminGovernanceModule({ initialTab = "admin_sync_status"
           },
           {
             id: "reconcile-subledgers",
-            label: "مطابقة الأستاذ الفرعي مع العام",
+            labelAr: "مطابقة الأستاذ الفرعي مع العام",
             labelEn: "Reconcile Subledgers to GL",
             icon: ShieldCheck,
             onClick: () => {
@@ -389,7 +389,7 @@ export default function AdminGovernanceModule({ initialTab = "admin_sync_status"
           },
           {
             id: "sync-pglite",
-            label: "مزامنة قاعدة PGlite المحلية",
+            labelAr: "مزامنة قاعدة PGlite المحلية",
             labelEn: "Sync PGlite DB",
             icon: RefreshCw,
             onClick: async () => {
@@ -400,7 +400,7 @@ export default function AdminGovernanceModule({ initialTab = "admin_sync_status"
           },
           {
             id: "create-backup",
-            label: "إنشاء نسخة احتياطية فورية",
+            labelAr: "إنشاء نسخة احتياطية فورية",
             labelEn: "Create Snapshot Backup",
             icon: Database,
             onClick: () => {

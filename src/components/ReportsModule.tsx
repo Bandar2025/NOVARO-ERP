@@ -6,6 +6,7 @@ import {
 import ERPTable, { ColumnDef } from "./common/ERPTable";
 import PageHeader from "./common/PageHeader";
 import GlobalActionBar from "./common/GlobalActionBar";
+import ReportToolbar from "./common/ReportToolbar";
 import { TrialBalanceRow } from "../core/application/accounting/AccountingEngine";
 
 interface ReportsModuleProps {
@@ -17,18 +18,70 @@ export default function ReportsModule({ language = "ar" }: ReportsModuleProps) {
   const { 
     accounts, journalEntries, salesInvoices, purchaseOrders,
     roastingJobs, grindingJobs, roasteryExpenses, grindingExpenses,
+    fiscalPeriods,
     getTrialBalance, getIncomeStatement, getBalanceSheet, runMasterCertification, runDataIntegrityAudit
   } = useAppState();
 
   const [activeReport, setActiveReport] = useState<"unified" | "trial_balance" | "balance_sheet" | "general_ledger" | "roastery" | "grinding" | "certification">("unified");
   const [selectedGlAccount, setSelectedGlAccount] = useState<string>("all");
+  const [reportStartDate, setReportStartDate] = useState<string>("2026-01-01");
+  const [reportEndDate, setReportEndDate] = useState<string>("2026-12-31");
+  const [selectedPeriodId, setSelectedPeriodId] = useState<string>("");
+  const [reportSearch, setReportSearch] = useState<string>("");
   const [certReport, setCertReport] = useState(() => runMasterCertification());
   const [integrityReport, setIntegrityReport] = useState(() => runDataIntegrityAudit());
 
   // --- STRICT LEDGER-DERIVED FINANCIAL RESULTS (NO HARDCODED ESTIMATIONS) ---
-  const incomeStatement = getIncomeStatement();
-  const balanceSheet = getBalanceSheet();
-  const trialBalance = getTrialBalance();
+  const incomeStatement = getIncomeStatement(reportStartDate, reportEndDate);
+  const balanceSheet = getBalanceSheet(reportEndDate);
+  const trialBalance = getTrialBalance(reportEndDate);
+
+  const handlePeriodSelect = (periodId: string) => {
+    setSelectedPeriodId(periodId);
+    const found = fiscalPeriods.find((p) => p.id === periodId);
+    if (found) {
+      setReportStartDate(found.startDate);
+      setReportEndDate(found.endDate);
+    }
+  };
+
+  const handleExportReportCsv = () => {
+    const rows = trialBalance.rows.map((r) => [
+      r.accountCode,
+      `"${(isAr ? r.accountNameAr : r.accountName).replace(/"/g, '""')}"`,
+      r.type,
+      r.debitTotal.toFixed(2),
+      r.creditTotal.toFixed(2),
+      r.balanceDebit.toFixed(2),
+      r.balanceCredit.toFixed(2)
+    ]);
+    const header = ["AccountCode", "AccountName", "Type", "DebitTotal", "CreditTotal", "BalanceDebit", "BalanceCredit"];
+    const csv = "\uFEFF" + [header.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `novaro_report_${activeReport}_${reportEndDate}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportReportJson = () => {
+    const dump = {
+      reportType: activeReport,
+      period: { startDate: reportStartDate, endDate: reportEndDate },
+      trialBalance,
+      incomeStatement,
+      balanceSheet
+    };
+    const blob = new Blob([JSON.stringify(dump, null, 2)], { type: "application/json;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `novaro_report_${activeReport}_${reportEndDate}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   // --- 2. CALCULATIONS FOR ROASTERY REPORT ---
   const totalRoastedKg = roastingJobs.reduce((sum, j) => sum + (j.roastedQty || j.outputQuantity || 0), 0);
@@ -148,22 +201,33 @@ export default function ReportsModule({ language = "ar" }: ReportsModuleProps) {
         language={language}
       />
 
-      {/* Global Action Bar */}
-      <GlobalActionBar
-        onPrint={handlePrint}
-        onRefresh={handleRunAudit}
-        extraActions={[
-          {
-            id: "act-audit-invariants",
-            labelAr: "فحص السلامة المحاسبية",
-            labelEn: "Audit Invariants",
-            icon: ShieldCheck,
-            variant: "secondary",
-            onClick: handleRunAudit
-          }
-        ]}
-        pageId="reports"
+      {/* Unified Report Toolbar (Period, Date Range, Search, Print, Export CSV/JSON, Refresh) */}
+      <ReportToolbar
         language={language}
+        startDate={reportStartDate}
+        endDate={reportEndDate}
+        onStartDateChange={setReportStartDate}
+        onEndDateChange={setReportEndDate}
+        selectedPeriodId={selectedPeriodId}
+        periods={fiscalPeriods.map((fp) => ({
+          id: fp.id,
+          name: fp.name,
+          startDate: fp.startDate,
+          endDate: fp.endDate
+        }))}
+        onPeriodChange={handlePeriodSelect}
+        searchQuery={reportSearch}
+        onSearchChange={setReportSearch}
+        onResetFilters={() => {
+          setSelectedPeriodId("");
+          setReportStartDate("2026-01-01");
+          setReportEndDate("2026-12-31");
+          setReportSearch("");
+        }}
+        onRefresh={handleRunAudit}
+        onPrint={handlePrint}
+        onExportCsv={handleExportReportCsv}
+        onExportJson={handleExportReportJson}
       />
 
       {/* Standardized Subnavigation Tabs */}

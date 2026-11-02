@@ -13,6 +13,8 @@ import GlobalActionBar from "./common/GlobalActionBar";
 import StatusBadge from "./common/StatusBadge";
 import FormSection from "./common/FormSection";
 import FormField from "./common/FormField";
+import DocumentActions from "./common/DocumentActions";
+import PermissionGate from "./common/PermissionGate";
 
 interface AccountingModuleProps {
   language?: "ar" | "en";
@@ -38,7 +40,7 @@ export default function AccountingModule({ language = "ar" }: AccountingModulePr
   const [jeNotes, setJeNotes] = useState<string>("");
   const [jeCurrency, setJeCurrency] = useState<Currency>(Currency.SAR);
   const [jeExchangeRate, setJeExchangeRate] = useState<number>(1);
-  const [jeWorkflowStatus, setJeWorkflowStatus] = useState<DocumentWorkflowStatus>("Posted");
+  const [jeWorkflowStatus, setJeWorkflowStatus] = useState<DocumentWorkflowStatus>("Draft");
   const [jeItems, setJeItems] = useState<Omit<JournalEntryItem, "id">[]>([
     { accountId: "", accountName: "", debit: 0, credit: 0, notes: "" },
     { accountId: "", accountName: "", debit: 0, credit: 0, notes: "" }
@@ -138,7 +140,7 @@ export default function AccountingModule({ language = "ar" }: AccountingModulePr
     setJeItems(jeItems.filter((_, idx) => idx !== index));
   };
 
-  const handlePostJe = (e: React.FormEvent) => {
+  const handlePostJe = (e: React.FormEvent, overrideStatus?: DocumentWorkflowStatus) => {
     e.preventDefault();
     setJeError(null);
     setJeSuccess(null);
@@ -151,37 +153,41 @@ export default function AccountingModule({ language = "ar" }: AccountingModulePr
 
     const totalDebits = jeItems.reduce((acc, item) => acc + item.debit, 0);
     const totalCredits = jeItems.reduce((acc, item) => acc + item.credit, 0);
-    if (Math.abs(totalDebits - totalCredits) > 0.01) {
+    if (Math.abs(totalDebits - totalCredits) > 0.001) {
       setJeError(isAr ? "تنبيه: مجموع المدين لا يتطابق مع مجموع الدائن." : "Error: Debits do not balance with Credits.");
       return;
     }
 
-    // Convert entries to base currency (SAR) with penny-rounding balance guarantee
+    // Convert entries to base currency (SAR) with strict 2-decimal precision (NO silent line auto-adjustment)
     const baseItems = jeItems.map(item => ({
       ...item,
       id: `jei-${Math.floor(100000 + Math.random() * 900000)}`,
-      debit: parseFloat((item.debit * jeExchangeRate).toFixed(2)),
-      credit: parseFloat((item.credit * jeExchangeRate).toFixed(2)),
+      debit: Math.round(item.debit * jeExchangeRate * 100) / 100,
+      credit: Math.round(item.credit * jeExchangeRate * 100) / 100,
       notes: jeCurrency === Currency.SAR
         ? (item.notes || "")
         : `${item.notes || ""} [Orig: ${jeCurrency} ${item.debit > 0 ? item.debit : item.credit} @ ${jeExchangeRate}]`
     }));
 
-    const convDebits = baseItems.reduce((s, i) => s + i.debit, 0);
-    const convCredits = baseItems.reduce((s, i) => s + i.credit, 0);
-    const pennyDiff = parseFloat((convDebits - convCredits).toFixed(2));
-    if (Math.abs(pennyDiff) > 0 && Math.abs(pennyDiff) <= 0.05) {
-      const creditIdx = baseItems.findIndex(i => i.credit > 0);
-      if (creditIdx !== -1) {
-        baseItems[creditIdx].credit = parseFloat((baseItems[creditIdx].credit + pennyDiff).toFixed(2));
-      }
+    const convDebits = Math.round(baseItems.reduce((s, i) => s + i.debit, 0) * 100) / 100;
+    const convCredits = Math.round(baseItems.reduce((s, i) => s + i.credit, 0) * 100) / 100;
+    const pennyDiff = Math.round((convDebits - convCredits) * 100) / 100;
+
+    if (Math.abs(pennyDiff) > 0.001) {
+      setJeError(
+        isAr
+          ? `فروق تقريب تحويل العملة (${pennyDiff.toFixed(2)} ر.س): مجموع المدين بالعملة الأساسية (${convDebits.toFixed(2)}) لا يساوي الدائن (${convCredits.toFixed(2)}). يرجى إضافة سطر تسوية فروق عملة صريح وعدم الاعتماد على التعديل التلقائي الصامت.`
+          : `Currency conversion rounding discrepancy (SAR ${pennyDiff.toFixed(2)}): Converted Debits (${convDebits.toFixed(2)}) != Converted Credits (${convCredits.toFixed(2)}). Please add an explicit FX rounding line.`
+      );
+      return;
     }
 
+    const targetStatus = overrideStatus || jeWorkflowStatus;
     const result = postJournalEntry({
       date: jeDate,
       reference: jeReference || "JV-MANUAL",
       notes: jeNotes || "Manual Journal Adjustment Voucher",
-      workflowStatus: jeWorkflowStatus,
+      workflowStatus: targetStatus,
       currency: jeCurrency,
       exchangeRate: jeExchangeRate,
       items: baseItems
@@ -189,9 +195,13 @@ export default function AccountingModule({ language = "ar" }: AccountingModulePr
 
     if (result.success) {
       setJeSuccess(
-        isAr 
-          ? "تم حفظ قيد التسوية المزدوج بنجاح وتحديث ميزان المراجعة الفوري!" 
-          : "Double-Entry Journal adjustment registered and verified successfully!"
+        targetStatus === "Draft"
+          ? (isAr
+              ? "تم حفظ القيد كمسودة (Draft) بنجاح! يمكنك مراجعته واعتماده ثم ترحيله للأستاذ العام."
+              : "Journal entry saved as Draft! You can now review, approve, and post it to the General Ledger.")
+          : (isAr 
+              ? "تم حفظ وترحيل قيد التسوية المزدوج بنجاح وتحديث ميزان المراجعة الفوري!" 
+              : "Double-Entry Journal adjustment registered and verified successfully!")
       );
       setJeReference("");
       setJeNotes("");
@@ -201,8 +211,8 @@ export default function AccountingModule({ language = "ar" }: AccountingModulePr
       ]);
       addToast({
         type: "success",
-        message: "تم ترحيل قيد التسوية بنجاح",
-        messageEn: "Manual journal entry created successfully"
+        message: targetStatus === "Draft" ? "تم حفظ مسودة القيد بنجاح" : "تم ترحيل قيد التسوية بنجاح",
+        messageEn: targetStatus === "Draft" ? "Draft journal entry saved" : "Manual journal entry posted"
       });
     } else {
       setJeError(result.error || "Failed to post journal entry.");
@@ -872,14 +882,16 @@ export default function AccountingModule({ language = "ar" }: AccountingModulePr
               </div>
 
               <div className="space-y-1">
-                <label className="text-[10px] uppercase font-bold text-slate-500 block">{isAr ? "حالة اعتماد السند" : "Posting Mode"}</label>
+                <label className="text-[10px] uppercase font-bold text-slate-500 block">{isAr ? "حالة دورة حياة السند" : "Lifecycle Stage"}</label>
                 <select
                   value={jeWorkflowStatus}
                   onChange={(e) => setJeWorkflowStatus(e.target.value as DocumentWorkflowStatus)}
                   className="w-full text-xs p-2.5 rounded-lg border border-slate-200 text-right font-bold bg-white"
                 >
-                  <option value="Posted">{isAr ? "ترحيل فوري للأستاذ العام (Posted)" : "Immediate GL Post (Posted)"}</option>
-                  <option value="Draft">{isAr ? "حفظ كمسودة للمراجعة (Draft)" : "Save as Draft (Draft)"}</option>
+                  <option value="Draft">{isAr ? "1. حفظ كمسودة للمراجعة (Draft - موصى به)" : "1. Save as Draft (Recommended)"}</option>
+                  <option value="PendingReview">{isAr ? "2. إرسال للمراجعة والاعتماد (Pending Review)" : "2. Submit for Review (PendingReview)"}</option>
+                  <option value="Approved">{isAr ? "3. معتمد جاهز للترحيل (Approved)" : "3. Approved"}</option>
+                  <option value="Posted">{isAr ? "4. ترحيل مباشر للأستاذ العام (Posted)" : "4. Direct GL Post (Posted)"}</option>
                 </select>
               </div>
 
@@ -1036,22 +1048,40 @@ export default function AccountingModule({ language = "ar" }: AccountingModulePr
 
             {/* Control buttons & balance checking bar */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-t border-slate-150 pt-4 bg-slate-50 p-4 rounded-xl">
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
                   onClick={addJeRow}
-                  className="px-4 py-2 text-xs font-bold bg-white border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-700 flex items-center gap-1.5 shadow-xs"
+                  className="px-4 py-2 text-xs font-bold bg-white border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-700 flex items-center gap-1.5 shadow-xs cursor-pointer"
                 >
                   <Plus className="w-4 h-4" /> 
                   <span>{isAr ? "إضافة سطر" : "Add Row"}</span>
                 </button>
-                <button
-                  type="submit"
-                  disabled={difference !== 0}
-                  className="px-5 py-2 text-xs font-black text-white bg-slate-950 hover:bg-slate-800 rounded-xl shadow-xs disabled:opacity-40 transition"
-                >
-                  {isAr ? "ترحيل السند بالدفاتر" : "Post Ledger Voucher"}
-                </button>
+                <PermissionGate page="accounting" action="create" language={language}>
+                  <button
+                    type="button"
+                    disabled={difference !== 0}
+                    onClick={(e) => handlePostJe(e as any, "Draft")}
+                    className="px-4 py-2 text-xs font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 border border-amber-300 rounded-xl shadow-xs disabled:opacity-40 transition cursor-pointer"
+                  >
+                    {isAr ? "حفظ كمسودة (Save Draft)" : "Save as Draft"}
+                  </button>
+                </PermissionGate>
+                <PermissionGate page="accounting" action={jeWorkflowStatus === "Posted" ? "post" : "create"} language={language}>
+                  <button
+                    type="submit"
+                    disabled={difference !== 0}
+                    className="px-5 py-2 text-xs font-black text-white bg-slate-950 hover:bg-slate-800 rounded-xl shadow-xs disabled:opacity-40 transition cursor-pointer"
+                  >
+                    {jeWorkflowStatus === "Draft"
+                      ? isAr
+                        ? "حفظ المسودة وإرسال للمراجعة"
+                        : "Save Draft Voucher"
+                      : isAr
+                      ? "اعتماد وترحيل السند بالدفاتر"
+                      : "Post Ledger Voucher"}
+                  </button>
+                </PermissionGate>
               </div>
 
               <div className="flex items-center gap-6 text-xs text-right">
@@ -1106,42 +1136,15 @@ export default function AccountingModule({ language = "ar" }: AccountingModulePr
                     <tr key={je.id} className="hover:bg-slate-50/40">
                       <td className="p-3 text-center">
                         <div className="flex items-center justify-center gap-1.5">
-                          {wfStatus === "Draft" && (
-                            <>
-                              <button
-                                onClick={() => handleApplyWorkflow(je.id, "Approved")}
-                                className="px-2.5 py-1 text-[10px] font-black text-white bg-slate-900 rounded-md hover:bg-slate-800"
-                              >
-                                {isAr ? "اعتماد" : "Approve"}
-                              </button>
-                              <button
-                                onClick={() => handleApplyWorkflow(je.id, "Cancelled")}
-                                className="px-2.5 py-1 text-[10px] font-bold text-rose-600 bg-rose-50 rounded-md hover:bg-rose-100"
-                              >
-                                {isAr ? "إلغاء" : "Cancel"}
-                              </button>
-                            </>
-                          )}
-                          {wfStatus === "Approved" && (
-                            <button
-                              onClick={() => handleApplyWorkflow(je.id, "Posted")}
-                              className="px-2.5 py-1 text-[10px] font-black text-white bg-teal-800 rounded-md hover:bg-teal-700"
-                            >
-                              {isAr ? "ترحيل الحسابات العامة" : "Post to GL"}
-                            </button>
-                          )}
-                          {wfStatus === "Posted" && (
-                            <button
-                              onClick={() => setReversalEntryId(je.id)}
-                              className="px-2.5 py-1 text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-100 rounded-md hover:bg-rose-100 flex items-center gap-1"
-                            >
-                              <RotateCw className="w-3 h-3" />
-                              <span>{isAr ? "قيد عكسي" : "Issue Reversal"}</span>
-                            </button>
-                          )}
-                          {wfStatus === "Cancelled" && (
-                            <span className="text-slate-400 font-medium italic">{isAr ? "ملغى ومقفل" : "Locked"}</span>
-                          )}
+                          <DocumentActions
+                            docType="journalEntry"
+                            docId={je.id}
+                            docReference={je.reference}
+                            docDate={je.date}
+                            currentStatus={wfStatus}
+                            pagePermissionKey="accounting"
+                            language={language}
+                          />
                         </div>
                       </td>
                       <td className="p-3 font-medium text-slate-700">{je.notes}</td>

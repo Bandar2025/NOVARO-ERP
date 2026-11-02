@@ -25,7 +25,7 @@ export interface JournalEntryItem {
   notes?: string;
 }
 
-export type DocumentWorkflowStatus = "Draft" | "Pending Review" | "Approved" | "Posted" | "Cancelled" | "Rejected" | "Archived";
+export type DocumentWorkflowStatus = "Draft" | "Pending Review" | "PendingReview" | "Approved" | "Posted" | "Cancelled" | "Rejected" | "Archived";
 
 export enum Currency {
   YER = "YER",

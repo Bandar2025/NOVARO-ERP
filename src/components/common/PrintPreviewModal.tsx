@@ -59,6 +59,8 @@ export default function PrintPreviewModal({
       : invoiceData?.id || "INV-1001"
   );
 
+  const taxIdentity = UnifiedPrintEngine.validateTaxIdentity(invoiceData);
+
   const handlePrint = () => {
     UnifiedPrintEngine.printFormattedDocument({
       format: activeMode,
@@ -97,8 +99,8 @@ export default function PrintPreviewModal({
                     ? "قالب إيصال كاشير حراري 80mm لنقاط البيع السريعة"
                     : "80mm Thermal POS Receipt Template"
                   : isAr
-                  ? "ملصق باركود وتتبع دفعة التحميص والإنتاج (100x60mm)"
-                  : "Roast Batch & Packaging Barcode Label (100x60mm)"}
+                  ? "ملصق باركود وتتبع دفعة التحميص والإنتاج (100x60mm - ISO Code-128B)"
+                  : "Roast Batch & Packaging Barcode Label (100x60mm - ISO Code-128B)"}
               </p>
             </div>
           </div>
@@ -165,10 +167,22 @@ export default function PrintPreviewModal({
             <button
               type="button"
               onClick={handlePrint}
-              className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+              className={`px-4 py-2 rounded-lg text-white text-xs font-black flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer ${
+                invoiceData && taxIdentity.isSimulationOrTrial
+                  ? "bg-amber-600 hover:bg-amber-500"
+                  : "bg-emerald-600 hover:bg-emerald-500"
+              }`}
             >
               <Printer className="w-4 h-4" />
-              <span>{isAr ? "طباعة المستند" : "Print Document"}</span>
+              <span>
+                {invoiceData && taxIdentity.isSimulationOrTrial
+                  ? isAr
+                    ? "طباعة بختم مسودة تجريبية"
+                    : "Print Simulation Draft"
+                  : isAr
+                  ? "طباعة المستند الرسمي"
+                  : "Print Official Document"}
+              </span>
             </button>
 
             <button
@@ -181,6 +195,18 @@ export default function PrintPreviewModal({
           </div>
         </div>
 
+        {/* Simulation / Trial Tax Identity Notice Banner */}
+        {invoiceData && taxIdentity.isSimulationOrTrial && (
+          <div className="bg-amber-50 border-b border-amber-300 px-6 py-2.5 flex items-center justify-between gap-3 text-xs text-amber-900">
+            <div className="font-bold">
+              ⚠️ {isAr ? taxIdentity.reasonAr : taxIdentity.reasonEn}
+            </div>
+            <span className="px-2.5 py-0.5 rounded bg-amber-200 text-amber-950 font-black font-mono text-[10px] shrink-0">
+              SIMULATION WATERMARK ACTIVE
+            </span>
+          </div>
+        )}
+
         {/* Printable Canvas Area */}
         <div
           dir={isAr ? "rtl" : "ltr"}
@@ -189,6 +215,13 @@ export default function PrintPreviewModal({
           {/* 1. A4 TAX INVOICE TEMPLATE */}
           {activeMode === "a4_invoice" && invoiceData && (
             <div className="bg-white w-full max-w-3xl p-8 rounded-xl border border-slate-300 shadow-sm space-y-6 text-slate-900">
+              {taxIdentity.isSimulationOrTrial && (
+                <div className="bg-amber-50 border-2 border-dashed border-amber-500 text-amber-900 px-4 py-2 rounded-xl text-center text-xs font-black">
+                  ⚠️ {isAr
+                    ? "مسودة تجريبية / محاكاة — غير صالحة للاستخدام الضريبي الرسمي (بيانات المنشأة الضريبية تجريبية)"
+                    : "SIMULATION / TRIAL DRAFT — NOT VALID AS AN OFFICIAL ZATCA TAX INVOICE"}
+                </div>
+              )}
               {/* Top Company & Document Title Header */}
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b-2 border-slate-900 pb-5">
                 <div className="space-y-1">

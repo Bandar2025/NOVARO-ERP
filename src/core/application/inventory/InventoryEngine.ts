@@ -23,6 +23,7 @@ export interface ReceiveStockDTO {
   supplierId?: string;
   createdBy: string;
   expiryDate?: string;
+  notes?: string;
 }
 
 export interface IssueStockDTO {

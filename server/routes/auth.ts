@@ -317,3 +317,116 @@ authRouter.post("/bootstrap", async (req: AuthRequest, res: Response) => {
     res.status(500).json({ error: { code: "BOOTSTRAP_FAILED", message: err.message, statusCode: 500 } });
   }
 });
+
+/**
+ * POST /api/auth/session-token
+ * Issues a real signed JWT access token bound to the active UI user, tenant, company, and branch.
+ */
+authRouter.post("/session-token", async (req: AuthRequest, res: Response) => {
+  try {
+    await ensureInitialized();
+    const {
+      userId = "usr-admin-1",
+      username = "admin",
+      email = "admin@novaro.sa",
+      role = "Admin",
+      tenantId = "tenant-novaro-prod",
+      companyId = "comp-novaro-prod",
+      branchId = "branch-riyadh-main",
+      companyName = "Novaro Specialty Roastery",
+      companyNameAr = "محمصة نوفارو المختصة",
+      taxNumber = "310492039200003"
+    } = req.body || {};
+
+    if (!tenantId || !companyId || !userId || !username) {
+      res.status(400).json({
+        error: { code: "INVALID_SESSION_CONTEXT", message: "tenantId, companyId, userId, and username are required.", statusCode: 400 }
+      });
+      return;
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      await client.query(
+        `INSERT INTO tenants (id, name, code, is_active)
+         VALUES ($1, $2, $3, true)
+         ON CONFLICT (id) DO NOTHING`,
+        [tenantId, companyName, tenantId.toUpperCase().slice(0, 16)]
+      );
+
+      await client.query(
+        `INSERT INTO companies (id, tenant_id, name, legal_name, tax_number, currency, is_active)
+         VALUES ($1, $2, $3, $4, $5, 'SAR', true)
+         ON CONFLICT (id) DO UPDATE SET
+           name = EXCLUDED.name,
+           legal_name = EXCLUDED.legal_name,
+           tax_number = EXCLUDED.tax_number`,
+        [companyId, tenantId, companyName, companyNameAr, taxNumber]
+      );
+
+      await client.query(
+        `INSERT INTO branches (id, tenant_id, company_id, name, code, is_active)
+         VALUES ($1, $2, $3, 'Main Branch', 'BR-01', true)
+         ON CONFLICT (id) DO NOTHING`,
+        [branchId, tenantId, companyId]
+      );
+
+      const normalizedRole = String(role).toUpperCase().replace(/\s+/g, "_");
+      const defaultHash = await AuthService.hashPassword("NovaroSessionAuth#2026");
+
+      await client.query(
+        `INSERT INTO users (id, tenant_id, company_id, branch_id, username, email, role, password_hash, status, is_active)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'ACTIVE', true)
+         ON CONFLICT (id) DO UPDATE SET
+           tenant_id = EXCLUDED.tenant_id,
+           company_id = EXCLUDED.company_id,
+           branch_id = EXCLUDED.branch_id,
+           role = EXCLUDED.role,
+           status = 'ACTIVE',
+           is_active = true`,
+        [userId, tenantId, companyId, branchId, username, email || `${username}@novaro.sa`, normalizedRole, defaultHash]
+      );
+
+      await client.query("COMMIT");
+    } catch (txErr) {
+      await client.query("ROLLBACK");
+      throw txErr;
+    } finally {
+      client.release();
+    }
+
+    const normalizedRole = String(role).toUpperCase().replace(/\s+/g, "_");
+    const perms = await AuthService.getUserPermissions(userId, normalizedRole, tenantId);
+    const allowedCompanies = await AuthService.getUserAllowedCompanies(userId, tenantId, companyId);
+
+    const authUser: AuthenticatedUser = {
+      id: userId,
+      tenantId,
+      companyId,
+      branchId,
+      username,
+      email: email || `${username}@novaro.sa`,
+      role: normalizedRole,
+      status: "ACTIVE",
+      permissions: perms,
+      allowedCompanies,
+    };
+
+    const tokens = await AuthService.generateTokens(authUser);
+
+    res.json({
+      success: true,
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      expiresIn: tokens.expiresIn,
+      user: authUser,
+    });
+  } catch (err: any) {
+    res.status(500).json({
+      error: { code: "SESSION_TOKEN_ERROR", message: err.message || "Failed to issue session token", statusCode: 500 }
+    });
+  }
+});
+

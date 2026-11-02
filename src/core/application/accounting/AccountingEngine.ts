@@ -136,7 +136,7 @@ export class AccountingEngine {
     }
 
     const entryId = candidate.id || `JE-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
-    const targetWorkflow: DocumentWorkflowStatus = candidate.workflowStatus || "Posted";
+    const targetWorkflow: DocumentWorkflowStatus = candidate.workflowStatus || "Draft";
     const isPosted = targetWorkflow === "Posted";
 
     const postedEntry: JournalEntry = {
@@ -155,6 +155,68 @@ export class AccountingEngine {
     return {
       success: true,
       entry: postedEntry
+    };
+  }
+
+  /**
+   * 3b. Transition Draft/Approved Entry through Lifecycle (Draft -> PendingReview -> Approved -> Posted)
+   * Strictly prevents double-posting and enforces fiscal period lock on Posting.
+   */
+  static transitionEntryStatus(
+    entryId: string,
+    nextStatus: DocumentWorkflowStatus,
+    existingEntries: JournalEntry[],
+    fiscalPeriods: FiscalPeriod[] = [],
+    reason?: string
+  ): PostEntryResult {
+    const existing = existingEntries.find(e => e.id === entryId);
+    if (!existing) {
+      return { success: false, error: `Journal entry ${entryId} not found.` };
+    }
+
+    if (existing.posted || existing.workflowStatus === "Posted") {
+      if (nextStatus === "Posted") {
+        return {
+          success: false,
+          error: `Double-posting prevented: Journal entry ${entryId} is already Posted.`
+        };
+      }
+      return {
+        success: false,
+        error: `Immutable ledger rule: Posted entry ${entryId} cannot be changed to ${nextStatus}; use reverseEntry.`
+      };
+    }
+
+    if ((nextStatus === "Rejected" || nextStatus === "Cancelled") && (!reason || !reason.trim())) {
+      return {
+        success: false,
+        error: "A clear rejection/cancellation reason is mandatory for audit trail compliance."
+      };
+    }
+
+    if (nextStatus === "Posted") {
+      const validation = this.validateEntry(existing, fiscalPeriods);
+      if (!validation.valid) {
+        return {
+          success: false,
+          errors: validation.errors,
+          error: validation.errors.join(" | ")
+        };
+      }
+    }
+
+    const updated: JournalEntry = {
+      ...existing,
+      workflowStatus: nextStatus,
+      posted: nextStatus === "Posted",
+      notes: reason && (nextStatus === "Rejected" || nextStatus === "Cancelled")
+        ? `${existing.notes} [${nextStatus}: ${reason}]`
+        : existing.notes
+    };
+
+    return {
+      success: true,
+      entry: updated
     };
   }
 

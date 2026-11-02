@@ -17,13 +17,21 @@ export interface DatabaseConfig {
   poolMax: number;
 }
 
-function resolveDatabaseConfig(): DatabaseConfig {
-  dotenv.config({ path: [".env", ".env.example"] });
-  const rawProvider = (process.env.DATABASE_PROVIDER || "pglite").toLowerCase().trim();
-  const url = process.env.DATABASE_URL;
-  const poolMax = parseInt(process.env.DATABASE_POOL_MAX || "10", 10);
-  const ssl = process.env.DATABASE_SSL === "true";
-  const name = process.env.DATABASE_NAME;
+export function resolveDatabaseConfig(envSource: Record<string, string | undefined> = process.env): DatabaseConfig {
+  if (envSource === process.env) {
+    dotenv.config({ path: ".env" });
+  }
+  const rawProvider = (envSource.DATABASE_PROVIDER || "").toLowerCase().trim();
+  const url = (envSource.DATABASE_URL || "").trim();
+  const poolMax = parseInt(envSource.DATABASE_POOL_MAX || "10", 10);
+  const ssl = envSource.DATABASE_SSL === "true";
+  const name = envSource.DATABASE_NAME;
+
+  if (!rawProvider) {
+    throw new Error(
+      "FAIL FAST CONFIG ERROR: DATABASE_PROVIDER environment variable is missing. Must be explicitly set to 'pglite' or 'postgres' in .env."
+    );
+  }
 
   if (rawProvider !== "pglite" && rawProvider !== "postgres") {
     throw new Error(
@@ -31,15 +39,26 @@ function resolveDatabaseConfig(): DatabaseConfig {
     );
   }
 
-  // If postgres is selected with the unconfigured example placeholder URL, use embedded PGlite in preview
   if (rawProvider === "postgres") {
     if (!url) {
       throw new Error(
         "FAIL FAST CONFIG ERROR: DATABASE_PROVIDER is set to 'postgres', but DATABASE_URL environment variable is missing."
       );
     }
-    if (url.includes("YOUR_PASSWORD_HERE")) {
-      return { provider: "pglite", poolMax };
+    if (!url.startsWith("postgres://") && !url.startsWith("postgresql://")) {
+      throw new Error(
+        "FAIL FAST CONFIG ERROR: DATABASE_URL must start with 'postgres://' or 'postgresql://'."
+      );
+    }
+    if (
+      url.includes("YOUR_PASSWORD_HERE") ||
+      url.includes("REPLACE_WITH") ||
+      url.includes("CHANGE_ME") ||
+      url.includes("example.com")
+    ) {
+      throw new Error(
+        "FAIL FAST CONFIG ERROR: DATABASE_URL contains placeholder or demo credentials. Refusing to start in postgres mode without valid credentials."
+      );
     }
     return { provider: "postgres", url, name, ssl, poolMax };
   }

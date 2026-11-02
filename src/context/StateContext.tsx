@@ -2053,9 +2053,22 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       
       // Strict Double-Entry Immutability: Posted journal entries cannot be mutated back to Draft/Cancelled directly; must use reverseJournalEntry
       if (oldStatus === "Posted" || entry.posted) {
+        if (status === "Posted") {
+          return {
+            success: false,
+            error: "منع الترحيل المزدوج (Double-Posting Guard): هذا القيد مرحّل بالفعل في الأستاذ العام ولا يمكن ترحيله مرة أخرى."
+          };
+        }
         return {
           success: false,
           error: "القيود المرحلة للأستاذ العام محمية وغير قابلة للتعديل المباشر؛ يجب استخدام قيد العكس المحاسبي (Reverse Entry)."
+        };
+      }
+
+      if ((status === "Cancelled" || status === "Rejected") && (!reason || !reason.trim())) {
+        return {
+          success: false,
+          error: "يجب إدخال سبب واضح عند رفض أو إلغاء المسودة لتوثيقه في سجل التدقيق."
         };
       }
 
@@ -2068,7 +2081,14 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       setJournalEntries(prev => prev.map(j => {
         if (j.id === docId) {
-          return { ...j, workflowStatus: status, posted: status === "Posted" };
+          return {
+            ...j,
+            workflowStatus: status,
+            posted: status === "Posted",
+            notes: reason && (status === "Rejected" || status === "Cancelled")
+              ? `${j.notes} [${status}: ${reason}]`
+              : j.notes
+          };
         }
         return j;
       }));
@@ -2728,11 +2748,70 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     counts?: Record<string, number>;
   } | null>(null);
 
+  const ensureSyncSessionToken = async (): Promise<string> => {
+    const cacheKey = `novaro_sync_jwt_${currentUser.id}`;
+    const cached = sessionStorage.getItem(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    const tokenRes = await fetch("/api/auth/session-token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId: currentUser.id || "usr-admin-1",
+        username: currentUser.username || "admin",
+        email: currentUser.email || "admin@novaro.sa",
+        role: currentUser.role || "Admin",
+        tenantId: "tenant-novaro-prod",
+        companyId: "comp-novaro-prod",
+        branchId: "branch-riyadh-main",
+        companyName: companySettings.name || "Novaro Specialty Roastery",
+        companyNameAr: companySettings.nameAr || "محمصة نوفارو المختصة",
+        taxNumber: companySettings.taxNumber || "310492039200003"
+      })
+    });
+
+    if (!tokenRes.ok) {
+      throw new Error(`Auth token issuance failed (HTTP ${tokenRes.status})`);
+    }
+    const tokenJson = await tokenRes.json();
+    if (!tokenJson.accessToken) {
+      throw new Error("Missing accessToken in session-token response");
+    }
+    sessionStorage.setItem(cacheKey, tokenJson.accessToken);
+    return tokenJson.accessToken;
+  };
+
   const syncWithPglite = async (direction: "push" | "pull" = "push"): Promise<{ success: boolean; message: string }> => {
     setSyncStatus("syncing");
     try {
+      let token = await ensureSyncSessionToken();
+
+      const executeWithAuth = async (url: string, init?: RequestInit) => {
+        let res = await fetch(url, {
+          ...init,
+          headers: {
+            ...(init?.headers || {}),
+            Authorization: `Bearer ${token}`
+          }
+        });
+        if (res.status === 401) {
+          sessionStorage.removeItem(`novaro_sync_jwt_${currentUser.id}`);
+          token = await ensureSyncSessionToken();
+          res = await fetch(url, {
+            ...init,
+            headers: {
+              ...(init?.headers || {}),
+              Authorization: `Bearer ${token}`
+            }
+          });
+        }
+        return res;
+      };
+
       if (direction === "pull") {
-        const pullRes = await fetch("/api/v1/sync/pull");
+        const pullRes = await executeWithAuth("/api/v1/sync/pull");
         if (!pullRes.ok) throw new Error(`HTTP ${pullRes.status}`);
         const json = await pullRes.json();
         if (json.success && json.data?.hasSnapshot && json.data?.snapshot) {
@@ -2757,10 +2836,15 @@ export const StateProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
       }
 
-      const pushRes = await fetch("/api/v1/sync/push", {
+      const idempotencyKey = `sync-${currentUser.id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const pushRes = await executeWithAuth("/api/v1/sync/push", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKey
+        },
         body: JSON.stringify({
+          idempotencyKey,
           accounts,
           warehouses,
           items,

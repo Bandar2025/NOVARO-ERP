@@ -1,5 +1,6 @@
 process.env.DATABASE_PROVIDER = process.env.DATABASE_PROVIDER || "pglite";
-// NOVARO ERP Phase 2A — 18-Check Master Certification Suite
+// NOVARO ERP Phase 2A + Forensic Remediation — 23-Check Master Certification Suite
+import express from "express";
 import {
   LocalAccountRepository,
   LocalJournalEntryRepository,
@@ -22,7 +23,11 @@ import { AccountingEngine } from "../src/core/application/accounting/AccountingE
 import { TrialBalanceService } from "../src/core/application/accounting/TrialBalanceService";
 import { InventoryEngine } from "../src/core/application/inventory/InventoryEngine";
 import { AppError } from "../src/core/application/errors/ApiError";
-import { AccountType, Currency } from "../src/types";
+import { AccountType } from "../src/types";
+import { resolveDatabaseConfig } from "../src/infrastructure/database/client/db";
+import { UnifiedPrintEngine } from "../src/utils/printEngine";
+import { authRouter } from "../server/routes/auth";
+import syncRouter from "../server/routes/sync";
 
 interface CheckResult {
   id: number;
@@ -97,7 +102,6 @@ async function runMasterCertification(): Promise<CheckResult[]> {
     // 6. Customer Subledger Reconciliation
     const custRepo = new LocalCustomerRepository();
     const customers = await custRepo.getAll();
-    const arAccount = accounts.find(a => a.code === "1200" || a.id === "acc-1200");
     const totalCustBalance = customers.reduce((sum, c) => sum + (c.balance || 0), 0);
     record(6, "Customer Subledger Truth", typeof totalCustBalance === "number", `Customer subledger accessible, tracking ${customers.length} customer records`);
 
@@ -115,7 +119,7 @@ async function runMasterCertification(): Promise<CheckResult[]> {
     const overIssue = InventoryEngine.issueStock(
       {
         itemId: "item-1",
-        quantity: 9999999, // Exceeds available stock (800kg)
+        quantity: 9999999,
         date: "2026-03-15",
         referenceType: "TEST",
         referenceId: "OVER-ISSUE-TEST",
@@ -211,6 +215,236 @@ async function runMasterCertification(): Promise<CheckResult[]> {
 
     // 18. Production Build Verification
     record(18, "Production Build Verification", true, "Vite and esbuild compilation succeeded cleanly");
+
+    // 19. [P0-A] Fail-Fast Database Provider Resolution (Zero Silent Fallback)
+    let threwMissingProvider = false;
+    let threwPlaceholderPostgres = false;
+    try {
+      resolveDatabaseConfig({ DATABASE_PROVIDER: "" });
+    } catch {
+      threwMissingProvider = true;
+    }
+    try {
+      resolveDatabaseConfig({
+        DATABASE_PROVIDER: "postgres",
+        DATABASE_URL: "postgresql://postgres:YOUR_PASSWORD_HERE@localhost:5432/novaro"
+      });
+    } catch {
+      threwPlaceholderPostgres = true;
+    }
+    const validPgliteCfg = resolveDatabaseConfig({ DATABASE_PROVIDER: "pglite", PGLITE_DATA_DIR: "./data/pglite" });
+    record(
+      19,
+      "[P0-A] Fail-Fast DB Config & Zero Silent Fallback",
+      threwMissingProvider && threwPlaceholderPostgres && validPgliteCfg.provider === "pglite",
+      "Strictly rejected unconfigured/placeholder postgres URL without silent fallback, and resolved pglite explicitly"
+    );
+
+    // 20 & 21. [P0-B] Sync Auth, Multi-Tenant Isolation, Atomic SQL Rollback & Idempotency
+    const testApp = express();
+    testApp.use(express.json());
+    testApp.use("/api/auth", authRouter);
+    testApp.use("/api/v1/sync", syncRouter);
+
+    const server = await new Promise<any>((resolve) => {
+      const s = testApp.listen(0, () => resolve(s));
+    });
+    const port = server.address().port;
+    const baseUrl = `http://127.0.0.1:${port}`;
+
+    try {
+      // 20a. Unauthenticated request must return 401
+      const unauthRes = await fetch(`${baseUrl}/api/v1/sync/status`);
+      const blockedUnauth = unauthRes.status === 401;
+
+      // 20b. Issue tokens for Tenant Alpha and Tenant Beta
+      const tokAlphaRes = await fetch(`${baseUrl}/api/auth/session-token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: "usr-alpha-1",
+          username: "alpha_admin",
+          role: "Admin",
+          tenantId: "tenant-alpha",
+          companyId: "comp-alpha",
+          branchId: "branch-alpha"
+        })
+      });
+      const tokAlphaJson = await tokAlphaRes.json();
+
+      const tokBetaRes = await fetch(`${baseUrl}/api/auth/session-token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: "usr-beta-1",
+          username: "beta_admin",
+          role: "Admin",
+          tenantId: "tenant-beta",
+          companyId: "comp-beta",
+          branchId: "branch-beta"
+        })
+      });
+      const tokBetaJson = await tokBetaRes.json();
+
+      // Push snapshot for Tenant Alpha with 3 accounts
+      const idemKeyAlpha = `idem-alpha-${Date.now()}`;
+      const pushAlphaRes = await fetch(`${baseUrl}/api/v1/sync/push`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${tokAlphaJson.accessToken}`,
+          "Idempotency-Key": idemKeyAlpha
+        },
+        body: JSON.stringify({
+          accounts: [
+            { id: "acc-1000", code: "1000", name: "Alpha Cash", type: "Asset", balance: 5500 },
+            { id: "acc-2000", code: "2000", name: "Alpha AP", type: "Liability", balance: 1500 },
+            { id: "acc-3000", code: "3000", name: "Alpha Equity", type: "Equity", balance: 4000 }
+          ]
+        })
+      });
+      const pushAlphaJson = await pushAlphaRes.json();
+
+      // Pull from Tenant Beta — must NOT see Tenant Alpha's snapshot!
+      const pullBetaRes = await fetch(`${baseUrl}/api/v1/sync/pull`, {
+        headers: { Authorization: `Bearer ${tokBetaJson.accessToken}` }
+      });
+      const pullBetaJson = await pullBetaRes.json();
+
+      const tenantIsolationVerified =
+        blockedUnauth &&
+        pushAlphaJson.success === true &&
+        pullBetaJson.success === true &&
+        pullBetaJson.data.hasSnapshot === false;
+
+      record(
+        20,
+        "[P0-B] Sync JWT Auth & Strict Multi-Tenant Isolation",
+        tenantIsolationVerified,
+        "Unauthenticated sync blocked (401); Tenant Alpha and Tenant Beta snapshots & rows strictly isolated"
+      );
+
+      // 21a. Idempotency replay test on Tenant Alpha
+      const replayAlphaRes = await fetch(`${baseUrl}/api/v1/sync/push`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${tokAlphaJson.accessToken}`,
+          "Idempotency-Key": idemKeyAlpha
+        },
+        body: JSON.stringify({
+          accounts: [{ id: "acc-1000", code: "1000", name: "Mutated Should Not Run", type: "Asset", balance: 999999 }]
+        })
+      });
+      const replayAlphaJson = await replayAlphaRes.json();
+
+      // 21b. Atomic SQL Transaction Rollback on mid-sync failure
+      const failedPushRes = await fetch(`${baseUrl}/api/v1/sync/push`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${tokAlphaJson.accessToken}`
+        },
+        body: JSON.stringify({
+          simulateAtomicFailure: true,
+          accounts: [{ id: "acc-1000", code: "1000", name: "Corrupted Partial Write", type: "Asset", balance: 777777 }]
+        })
+      });
+      const failedPushJson = await failedPushRes.json();
+
+      // Verify Tenant Alpha snapshot still has the original 3 accounts (balance 5500) after rollback!
+      const pullAlphaAfterRollback = await fetch(`${baseUrl}/api/v1/sync/pull`, {
+        headers: { Authorization: `Bearer ${tokAlphaJson.accessToken}` }
+      });
+      const pullAlphaAfterJson = await pullAlphaAfterRollback.json();
+      const preservedAccountsCount = pullAlphaAfterJson.data?.snapshot?.accounts?.length;
+      const preservedBalance = pullAlphaAfterJson.data?.snapshot?.accounts?.[0]?.balance;
+
+      const atomicAndIdempotentPassed =
+        replayAlphaJson.idempotentReplay === true &&
+        failedPushRes.status === 400 &&
+        failedPushJson.error?.code === "SYNC_TRANSACTION_ROLLED_BACK" &&
+        preservedAccountsCount === 3 &&
+        preservedBalance === 5500;
+
+      record(
+        21,
+        "[P0-B] Atomic SQL Rollback & Idempotency Replay",
+        atomicAndIdempotentPassed,
+        `Idempotent replay verified; simulated mid-sync failure rolled back atomically preserving original ${preservedAccountsCount} accounts (Balance: ${preservedBalance})`
+      );
+    } finally {
+      server.close();
+    }
+
+    // 22. [P1-A] Accounting Draft Lifecycle Default & Double-Posting Guard
+    const defaultDraftRes = AccountingEngine.postEntry({
+      date: "2026-03-20",
+      reference: "JV-DRAFT-DEFAULT",
+      notes: "Should default to Draft when workflowStatus omitted",
+      items: [
+        { id: "l1", accountId: "acc-1000", accountName: "Cash", debit: 250, credit: 0 },
+        { id: "l2", accountId: "acc-4000", accountName: "Sales", debit: 0, credit: 250 }
+      ]
+    });
+    const isDraftByDefault =
+      defaultDraftRes.success &&
+      defaultDraftRes.entry?.workflowStatus === "Draft" &&
+      defaultDraftRes.entry?.posted === false;
+
+    const entryList = defaultDraftRes.entry ? [defaultDraftRes.entry] : [];
+    const approvedStep = AccountingEngine.transitionEntryStatus(
+      defaultDraftRes.entry!.id,
+      "Approved",
+      entryList
+    );
+    const postedStep = AccountingEngine.transitionEntryStatus(
+      defaultDraftRes.entry!.id,
+      "Posted",
+      approvedStep.entry ? [approvedStep.entry] : []
+    );
+    const doublePostAttempt = AccountingEngine.transitionEntryStatus(
+      defaultDraftRes.entry!.id,
+      "Posted",
+      postedStep.entry ? [postedStep.entry] : []
+    );
+
+    record(
+      22,
+      "[P1-A] Draft Default Lifecycle & Double-Post Prevention",
+      Boolean(isDraftByDefault && approvedStep.success && postedStep.success && !doublePostAttempt.success),
+      "Entries default to Draft -> transition to Approved -> Posted, and strictly block double-posting"
+    );
+
+    // 23. [P1-B] ISO/IEC 15417 Code-128B Modulo 103 Checksum & Simulation Watermark Separation
+    const barcodeTest = UnifiedPrintEngine.encodeCode128B("RST-2026-09");
+    const simTaxCheck = UnifiedPrintEngine.validateTaxIdentity({
+      id: "INV-SIM",
+      date: "2026-03-20",
+      customerName: "Test Buyer",
+      companyVat: "310123456700003", // Default demo VAT
+      items: [],
+      totalAmount: 115
+    });
+    const prodTaxCheck = UnifiedPrintEngine.validateTaxIdentity({
+      id: "INV-PROD",
+      date: "2026-03-20",
+      customerName: "Test Buyer",
+      companyVat: "310492039200003", // Real 15-digit production VAT
+      items: [],
+      totalAmount: 115
+    });
+
+    record(
+      23,
+      "[P1-B] ISO Code-128B Mod-103 Barcode & Simulation Watermark",
+      barcodeTest.isValidCode128B &&
+        barcodeTest.startCode === 104 &&
+        barcodeTest.stopCode === 106 &&
+        simTaxCheck.isSimulationOrTrial === true &&
+        prodTaxCheck.isOfficialProductionReady === true,
+      `Code-128B verified (Start=${barcodeTest.startCode}, Mod103=${barcodeTest.checksumValue}, Modules=${barcodeTest.totalModules}); Trial vs Official VAT separated`
+    );
 
   } catch (err: any) {
     console.error("Certification suite execution error:", err);
