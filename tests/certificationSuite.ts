@@ -1,4 +1,4 @@
-process.env.DATABASE_PROVIDER = process.env.DATABASE_PROVIDER || "pglite";
+import "../server/bootstrapEnv";
 // NOVARO ERP Phase 2A + Forensic Remediation — 23-Check Master Certification Suite
 import express from "express";
 import {

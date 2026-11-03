@@ -13,6 +13,7 @@ import GlobalActionBar from "./common/GlobalActionBar";
 import StatusBadge from "./common/StatusBadge";
 import FormSection from "./common/FormSection";
 import FormField from "./common/FormField";
+import FormActions from "./common/FormActions";
 import DocumentActions from "./common/DocumentActions";
 import PermissionGate from "./common/PermissionGate";
 
@@ -1046,43 +1047,16 @@ export default function AccountingModule({ language = "ar" }: AccountingModulePr
               </div>
             )}
 
-            {/* Control buttons & balance checking bar */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-t border-slate-150 pt-4 bg-slate-50 p-4 rounded-xl">
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={addJeRow}
-                  className="px-4 py-2 text-xs font-bold bg-white border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-700 flex items-center gap-1.5 shadow-xs cursor-pointer"
-                >
-                  <Plus className="w-4 h-4" /> 
-                  <span>{isAr ? "إضافة سطر" : "Add Row"}</span>
-                </button>
-                <PermissionGate page="accounting" action="create" language={language}>
-                  <button
-                    type="button"
-                    disabled={difference !== 0}
-                    onClick={(e) => handlePostJe(e as any, "Draft")}
-                    className="px-4 py-2 text-xs font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 border border-amber-300 rounded-xl shadow-xs disabled:opacity-40 transition cursor-pointer"
-                  >
-                    {isAr ? "حفظ كمسودة (Save Draft)" : "Save as Draft"}
-                  </button>
-                </PermissionGate>
-                <PermissionGate page="accounting" action={jeWorkflowStatus === "Posted" ? "post" : "create"} language={language}>
-                  <button
-                    type="submit"
-                    disabled={difference !== 0}
-                    className="px-5 py-2 text-xs font-black text-white bg-slate-950 hover:bg-slate-800 rounded-xl shadow-xs disabled:opacity-40 transition cursor-pointer"
-                  >
-                    {jeWorkflowStatus === "Draft"
-                      ? isAr
-                        ? "حفظ المسودة وإرسال للمراجعة"
-                        : "Save Draft Voucher"
-                      : isAr
-                      ? "اعتماد وترحيل السند بالدفاتر"
-                      : "Post Ledger Voucher"}
-                  </button>
-                </PermissionGate>
-              </div>
+            {/* Double-Entry Totals Bar */}
+            <div className="flex flex-wrap items-center justify-between gap-4 border-t border-slate-150 pt-4 bg-slate-50 p-4 rounded-xl">
+              <button
+                type="button"
+                onClick={addJeRow}
+                className="px-4 py-2 text-xs font-bold bg-white border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-700 flex items-center gap-1.5 shadow-xs cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>{isAr ? "إضافة سطر قيد" : "Add Journal Line"}</span>
+              </button>
 
               <div className="flex items-center gap-6 text-xs text-right">
                 <div className="space-y-0.5">
@@ -1101,6 +1075,49 @@ export default function AccountingModule({ language = "ar" }: AccountingModulePr
                 </div>
               </div>
             </div>
+
+            {/* Unified Form Actions */}
+            <FormActions
+              pagePermissionKey="accounting"
+              requiredAction={jeWorkflowStatus === "Posted" ? "post" : "create"}
+              language={language}
+              isDirty={Boolean(jeReference || jeNotes || jeItems.some(i => i.accountId || i.debit > 0 || i.credit > 0))}
+              disabled={difference !== 0 || totalDebits <= 0}
+              disabledReasonAr="يجب إدخال مبالغ صحيحة وتساوي مجموع المدين مع مجموع الدائن قبل الحفظ"
+              disabledReasonEn="Debits and credits must be greater than zero and strictly balanced before saving"
+              onReset={() => {
+                setJeReference("");
+                setJeNotes("");
+                setJeError(null);
+                setJeSuccess(null);
+                setJeItems([
+                  { accountId: "", accountName: "", debit: 0, credit: 0, notes: "" },
+                  { accountId: "", accountName: "", debit: 0, credit: 0, notes: "" }
+                ]);
+              }}
+              onValidate={() => {
+                if (jeItems.some(i => !i.accountId)) {
+                  setJeError(isAr ? "يرجى اختيار الحساب المالي لجميع سطور القيد" : "Select an account for all lines");
+                } else if (difference !== 0 || totalDebits <= 0) {
+                  setJeError(isAr ? "القيد غير متوازن أو قيمته صفرية" : "Journal entry is unbalanced or zero");
+                } else {
+                  setJeError(null);
+                  setJeSuccess(isAr ? "✓ القيد متوازن ومكتمل وجاهز للحفظ" : "✓ Journal entry is balanced and valid");
+                }
+              }}
+              onSaveDraft={() => handlePostJe({ preventDefault: () => {} } as React.FormEvent, "Draft")}
+              onSaveAndNew={() => handlePostJe({ preventDefault: () => {} } as React.FormEvent, jeWorkflowStatus)}
+              primarySubmitLabelAr={
+                jeWorkflowStatus === "Draft"
+                  ? "حفظ المسودة وإرسال للمراجعة"
+                  : "اعتماد وترحيل السند بالدفاتر"
+              }
+              primarySubmitLabelEn={
+                jeWorkflowStatus === "Draft"
+                  ? "Save Draft Voucher"
+                  : "Post Ledger Voucher"
+              }
+            />
           </form>
         </div>
       )}

@@ -417,8 +417,12 @@ export default function AdminGovernanceModule({ initialTab = "admin_sync_status"
         <KpiCard
           title="حالة سلامة الحسابات والمطابقة"
           titleEn="Data Integrity Status"
-          value={integrity.overallHealthy ? "متطابق 100%" : "يتطلب مراجعة"}
-          subtitle={`${integrity.checks.filter(c => c.passed).length} / ${integrity.checks.length} فحوصات ناجحة`}
+          value={integrity.overallStatus === "HEALTHY" ? (isAr ? "متطابق 100%" : "100% Healthy") : (isAr ? "يتطلب مراجعة" : "Requires Review")}
+          subtitle={
+            isAr
+              ? `${integrity.criticalCount} حرجة | ${integrity.warningCount} تنبيه | ${integrity.findings.length} ملاحظات`
+              : `${integrity.criticalCount} Critical | ${integrity.warningCount} Warnings | ${integrity.findings.length} Findings`
+          }
           icon={ShieldCheck}
           language={language}
         />
@@ -1588,7 +1592,7 @@ export default function AdminGovernanceModule({ initialTab = "admin_sync_status"
                     <tr>
                       <td className="p-3 font-bold">ذمم العملاء المدينة (Accounts Receivable - 1200)</td>
                       <td className="p-3 font-mono">{integrity.reconciliation.arSubledgerTotal.toFixed(2)} ر.س</td>
-                      <td className="p-3 font-mono">{integrity.reconciliation.arControlBalance.toFixed(2)} ر.س</td>
+                      <td className="p-3 font-mono">{integrity.reconciliation.arGlBalance.toFixed(2)} ر.س</td>
                       <td className="p-3 font-mono font-bold">{integrity.reconciliation.arVariance.toFixed(2)} ر.س</td>
                       <td className="p-3">
                         <StatusBadge status={Math.abs(integrity.reconciliation.arVariance) <= 0.05 ? "Completed" : "Draft"} language={language} size="sm" />
@@ -1597,7 +1601,7 @@ export default function AdminGovernanceModule({ initialTab = "admin_sync_status"
                     <tr>
                       <td className="p-3 font-bold">ذمم الموردين الدائنة (Accounts Payable - 2000)</td>
                       <td className="p-3 font-mono">{integrity.reconciliation.apSubledgerTotal.toFixed(2)} ر.س</td>
-                      <td className="p-3 font-mono">{integrity.reconciliation.apControlBalance.toFixed(2)} ر.س</td>
+                      <td className="p-3 font-mono">{integrity.reconciliation.apGlBalance.toFixed(2)} ر.س</td>
                       <td className="p-3 font-mono font-bold">{integrity.reconciliation.apVariance.toFixed(2)} ر.س</td>
                       <td className="p-3">
                         <StatusBadge status={Math.abs(integrity.reconciliation.apVariance) <= 0.05 ? "Completed" : "Draft"} language={language} size="sm" />
@@ -1605,7 +1609,7 @@ export default function AdminGovernanceModule({ initialTab = "admin_sync_status"
                     </tr>
                     <tr>
                       <td className="p-3 font-bold">تقييم طبقات المخزون (FIFO Layers vs Inventory GL 1300/1310/1320)</td>
-                      <td className="p-3 font-mono">{integrity.reconciliation.inventoryFifoTotal.toFixed(2)} ر.س</td>
+                      <td className="p-3 font-mono">{integrity.reconciliation.inventoryLayersTotal.toFixed(2)} ر.س</td>
                       <td className="p-3 font-mono">{integrity.reconciliation.inventoryGlBalance.toFixed(2)} ر.س</td>
                       <td className="p-3 font-mono font-bold">{integrity.reconciliation.inventoryVariance.toFixed(2)} ر.س</td>
                       <td className="p-3">

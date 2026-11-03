@@ -7,6 +7,8 @@ import PageHeader from "./common/PageHeader";
 import GlobalActionBar from "./common/GlobalActionBar";
 import FormSection from "./common/FormSection";
 import FormField from "./common/FormField";
+import FormActions from "./common/FormActions";
+import AuditActions from "./common/AuditActions";
 import EmptyState from "./common/EmptyState";
 import StatusBadge from "./common/StatusBadge";
 import ZatcaQRModal from "./common/ZatcaQRModal";
@@ -72,12 +74,12 @@ export default function SalesModule({ language = "ar" }: SalesModuleProps) {
       render: (_: any, row: any) => {
         const zatcaRec = zatcaRecords.find(r => r.documentId === row.id);
         return (
-          <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+          <div className="flex flex-wrap items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
               onClick={() => setSelectedInvoice(row)}
               title={isAr ? "معاينة وطباعة الفاتورة" : "Preview & Print Invoice"}
-              className="p-1.5 rounded-lg text-slate-500 hover:text-teal-700 hover:bg-slate-100 transition-colors flex items-center gap-1 text-xs font-semibold"
+              className="p-1.5 rounded-lg text-slate-500 hover:text-teal-700 hover:bg-slate-100 transition-colors flex items-center gap-1 text-xs font-semibold cursor-pointer"
             >
               <Eye className="w-3.5 h-3.5" />
               <span>{isAr ? "معاينة" : "View"}</span>
@@ -87,12 +89,19 @@ export default function SalesModule({ language = "ar" }: SalesModuleProps) {
                 type="button"
                 onClick={() => setSelectedZatcaRecord(zatcaRec)}
                 title={isAr ? "ختم ZATCA QR & XML" : "ZATCA QR & XML"}
-                className="p-1.5 rounded-lg text-teal-700 bg-teal-50 hover:bg-teal-100 transition-colors flex items-center gap-1 text-xs font-bold"
+                className="p-1.5 rounded-lg text-teal-700 bg-teal-50 hover:bg-teal-100 transition-colors flex items-center gap-1 text-xs font-bold cursor-pointer"
               >
                 <QrCode className="w-3.5 h-3.5" />
                 <span>ZATCA</span>
               </button>
             )}
+            <AuditActions
+              documentId={row.id}
+              documentTypeLabelAr="فاتورة مبيعات"
+              documentTypeLabelEn="Sales Invoice"
+              language={language}
+              compact
+            />
           </div>
         );
       }
@@ -359,23 +368,22 @@ export default function SalesModule({ language = "ar" }: SalesModuleProps) {
                 <div>{isAr ? "ضريبة القيمة المضافة (15%):" : "VAT (15%):"} <strong>SAR {calculatedVat.toFixed(2)}</strong></div>
                 <div className="text-sm font-black text-slate-900">{isAr ? "الإجمالي النهائي:" : "Grand Total:"} <strong className="text-teal-700">SAR {calculatedTotal.toFixed(2)}</strong></div>
               </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowNewInvoice(false)}
-                  className="px-4 py-2 border border-slate-300 rounded-lg bg-white text-slate-700 font-bold hover:bg-slate-50 transition-colors text-xs"
-                >
-                  {isAr ? "إلغاء" : "Cancel"}
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-teal-700 hover:bg-teal-800 text-white font-black rounded-lg transition-all text-xs shadow-sm shadow-teal-700/20"
-                >
-                  {isAr ? "اعتماد وترحيل الفاتورة" : "Post Sales Invoice"}
-                </button>
-              </div>
             </div>
+
+            <FormActions
+              pagePermissionKey="sales"
+              requiredAction="create"
+              language={language}
+              isDirty={Boolean(selectedCustomerId || invoiceItems.some(i => i.itemId || i.quantity > 0))}
+              onReset={() => {
+                setSelectedCustomerId("");
+                setInvoiceItems([{ itemId: "", itemName: "", quantity: 0, price: 0 }]);
+                setErrorMessage(null);
+              }}
+              onCancel={() => setShowNewInvoice(false)}
+              primarySubmitLabelAr="اعتماد وترحيل الفاتورة"
+              primarySubmitLabelEn="Post Sales Invoice"
+            />
           </FormSection>
         </form>
       )}
